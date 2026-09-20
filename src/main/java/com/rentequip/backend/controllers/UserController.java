@@ -1,0 +1,62 @@
+package com.rentequip.backend.controllers;
+
+import com.rentequip.backend.dtos.request.UserCreateRequest;
+import com.rentequip.backend.dtos.request.UserUpdateRequest;
+import com.rentequip.backend.dtos.response.UserResponse;
+import com.rentequip.backend.services.UserService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.net.URI;
+
+@RestController
+@RequestMapping("/api/v1/users")
+@RequiredArgsConstructor
+@Validated
+public class UserController {
+
+    private static final String ACTING_COMPANY_HEADER = "X-Company-Id";
+
+    private final UserService userService;
+
+    @PostMapping
+    public ResponseEntity<UserResponse> create(@Valid @RequestBody UserCreateRequest request,
+                                                UriComponentsBuilder uriBuilder) {
+        UserResponse created = userService.create(request);
+        URI location = uriBuilder.path("/api/v1/users/{id}").buildAndExpand(created.id()).toUri();
+        return ResponseEntity.created(location).body(created);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<UserResponse> findById(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.findById(id));
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<UserResponse> update(
+            @PathVariable Long id,
+            @Valid @RequestBody UserUpdateRequest request,
+            @RequestHeader(ACTING_COMPANY_HEADER) @NotNull Long actingCompanyId) {
+        return ResponseEntity.ok(userService.update(id, request, actingCompanyId));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> disable(@PathVariable Long id,
+                                         @RequestHeader(ACTING_COMPANY_HEADER) @NotNull Long actingCompanyId) {
+        userService.disable(id, actingCompanyId);
+        return ResponseEntity.noContent().build();
+    }
+}
