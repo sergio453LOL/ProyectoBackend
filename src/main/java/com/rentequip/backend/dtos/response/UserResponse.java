@@ -1,0 +1,19 @@
+package com.rentequip.backend.dtos.response;
+
+import com.rentequip.backend.enums.UserRole;
+
+import java.time.LocalDateTime;
+
+public record UserResponse(
+        Long id,
+        String firstName,
+        String lastName,
+        String email,
+        String phone,
+        UserRole role,
+        boolean enabled,
+        Long companyId,
+        String companyName,
+        LocalDateTime createdAt
+) {
+}
