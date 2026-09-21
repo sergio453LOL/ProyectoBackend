@@ -2,7 +2,7 @@ services:
   db:
     image: postgres:16
     container_name: rentequip-postgres
-    restart: unless-stopped
+    restart: "no"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -20,7 +20,7 @@ services:
   backend:
     build: .
     container_name: rentequip-backend
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
