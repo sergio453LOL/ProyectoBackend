@@ -1,0 +1,6058 @@
+{
+	"info": {
+		"_postman_id": "6f1c9a52-3d0e-4b8e-9a51-2c7e8f4d1b03",
+		"name": "RentEquip API",
+		"description": "Colección de la API REST de **RentEquip** (Spring Boot), sincronizada con los 6 controladores de `src/main/java/com/rentequip/backend/controllers/`. Cada ejemplo de respuesta guardado es una respuesta real del backend, capturada ejecutando la colección en orden.\n\n## Cómo ejecutarla\n1. Levantar el backend sobre una base limpia: `docker compose down -v && docker compose up -d --build`.\n2. Importar este archivo en Postman (Collection v2.1) y, si hace falta, ajustar `baseUrl`.\n3. Correr la colección completa con el **Collection Runner**, en orden. Los requests de creación guardan los ids en variables de colección y el pre-request script calcula fechas futuras.\n\nLa base debe estar limpia porque RUC, emails, nombres de categoría y números de serie son únicos.\n\n## Autenticación / autorización (estado actual del código)\n`SecurityConfig` deja toda la API abierta (`permitAll`): **no hay autenticación**. La empresa que actúa se indica con la cabecera `X-Company-Id` solo en las operaciones que la exigen, y el servicio comprueba la propiedad del recurso (`403 FORBIDDEN_OPERATION` si no corresponde). Por eso la colección no define auth a nivel de colección: el valor de `X-Company-Id` cambia según el request (`{{companyAId}}` para el dueño, `{{companyBId}}` para el arrendatario) y va en cada request que lo necesita. Si falta la cabecera, la respuesta es `400 MISSING_HEADER` (no `401`).\n\n_Pendiente (brief 05 – JWT, no mergeado):_ cuando exista `POST /api/v1/auth/login`, agregar el request de login que guarde `{{token}}`, cambiar la auth de la colección a **Bearer Token** y reemplazar `X-Company-Id`.\n\n## Formato de error\nTodo error pasa por `GlobalExceptionHandler` y devuelve `ErrorResponse`: `timestamp`, `status`, `error`, `code`, `message`, `path` y, en errores de validación, `details[]` con `field`, `rejectedValue` y `message`.\n\n| Situación | Status | `code` |\n|---|---|---|\n| Body inválido (Bean Validation) | 400 | `VALIDATION_ERROR` |\n| Query/path param fuera de rango | 400 | `VALIDATION_ERROR` |\n| JSON mal formado o ausente | 400 | `MALFORMED_REQUEST_BODY` |\n| Falta query param obligatorio | 400 | `MISSING_PARAMETER` |\n| Falta `X-Company-Id` | 400 | `MISSING_HEADER` |\n| Param con tipo inválido | 400 | `TYPE_MISMATCH` |\n| Regla de negocio violada | 400 | `INVALID_OPERATION` |\n| Fechas de reserva inválidas | 400 | `INVALID_RESERVATION_DATES` |\n| Recurso ajeno | 403 | `FORBIDDEN_OPERATION` |\n| Recurso inexistente | 404 | `RESOURCE_NOT_FOUND` |\n| Ruta inexistente | 404 | `ENDPOINT_NOT_FOUND` |\n| Verbo no soportado | 405 | `METHOD_NOT_ALLOWED` |\n| Duplicado (RUC, email, nombre, serie, reseña) | 409 | `DUPLICATE_RESOURCE` |\n| Overbooking | 409 | `EQUIPMENT_NOT_AVAILABLE` |\n| Equipo en `MAINTENANCE`/`INACTIVE` | 409 | `EQUIPMENT_UNAVAILABLE` |\n| Transición de estado inválida | 409 | `INVALID_STATUS_TRANSITION` |\n| Violación de integridad en BD | 409 | `DATA_INTEGRITY_VIOLATION` |\n| Lock concurrente no obtenido | 409 | `CONCURRENT_REQUEST` |\n| Error inesperado | 500 | `INTERNAL_ERROR` |",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Companies",
+			"description": "`CompanyController` — `/api/v1/companies`. Una empresa es a la vez arrendadora (dueña de equipos) y arrendataria. Solo `PATCH` y `DELETE` exigen `X-Company-Id`, y el servicio verifica que la cabecera coincida con el `{id}` de la ruta (autoservicio): si no, `403 FORBIDDEN_OPERATION`.",
+			"item": [
+				{
+					"name": "Crear empresa A (dueña)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"companyAId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Maquinarias Andinas SAC\",\n  \"taxId\": \"20123456789\",\n  \"email\": \"contacto@andinas.pe\",\n  \"phone\": \"+51 1 4567890\",\n  \"address\": \"Av. Argentina 1234\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464,\n  \"longitude\": -77.0428\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/companies",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies"
+							]
+						},
+						"description": "Registra la empresa **A**, que en el flujo es la dueña del equipo. Guarda el `id` en `companyAId`.\n\nCampos (`CompanyCreateRequest`): `name` (2–150), `taxId` (RUC, exactamente 11 dígitos, único), `email` (único), `phone`, `address`, `city`, `latitude` (-90..90), `longitude` (-180..180). Devuelve `201 Created` con cabecera `Location`."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Maquinarias Andinas SAC\",\n  \"taxId\": \"20123456789\",\n  \"email\": \"contacto@andinas.pe\",\n  \"phone\": \"+51 1 4567890\",\n  \"address\": \"Av. Argentina 1234\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464,\n  \"longitude\": -77.0428\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/companies",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/companies/1"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"name\": \"Maquinarias Andinas SAC\",\n  \"taxId\": \"20123456789\",\n  \"email\": \"contacto@andinas.pe\",\n  \"phone\": \"+51 1 4567890\",\n  \"address\": \"Av. Argentina 1234\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464,\n  \"longitude\": -77.0428,\n  \"active\": true,\n  \"createdAt\": \"2026-09-22T12:21:12.459634\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear empresa B (arrendataria)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"companyBId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Constructora Pacifico SAC\",\n  \"taxId\": \"20987654321\",\n  \"email\": \"obras@pacifico.pe\",\n  \"phone\": \"+51 1 7654321\",\n  \"address\": \"Av. Javier Prado 500\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0900,\n  \"longitude\": -77.0200\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/companies",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies"
+							]
+						},
+						"description": "Registra la empresa **B**, que alquilará el equipo de A. Hacen falta dos empresas porque una empresa no puede alquilar su propio equipo. Guarda el `id` en `companyBId`."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Constructora Pacifico SAC\",\n  \"taxId\": \"20987654321\",\n  \"email\": \"obras@pacifico.pe\",\n  \"phone\": \"+51 1 7654321\",\n  \"address\": \"Av. Javier Prado 500\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0900,\n  \"longitude\": -77.0200\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/companies",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/companies/2"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 2,\n  \"name\": \"Constructora Pacifico SAC\",\n  \"taxId\": \"20987654321\",\n  \"email\": \"obras@pacifico.pe\",\n  \"phone\": \"+51 1 7654321\",\n  \"address\": \"Av. Javier Prado 500\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0900,\n  \"longitude\": -77.0200,\n  \"active\": true,\n  \"createdAt\": \"2026-09-22T12:21:12.591364\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear empresa con RUC duplicado → 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 409\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"pm.test(\"code = DUPLICATE_RESOURCE\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"DUPLICATE_RESOURCE\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Otra Empresa SAC\",\n  \"taxId\": \"20123456789\",\n  \"email\": \"otra@andinas.pe\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464,\n  \"longitude\": -77.0428\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/companies",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies"
+							]
+						},
+						"description": "Caso de error: el `taxId` ya pertenece a la empresa A. `CompanyService` lanza `DuplicateResourceException` → `409 Conflict`, `code: DUPLICATE_RESOURCE`."
+					},
+					"response": [
+						{
+							"name": "409 Conflict",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Otra Empresa SAC\",\n  \"taxId\": \"20123456789\",\n  \"email\": \"otra@andinas.pe\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464,\n  \"longitude\": -77.0428\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/companies",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies"
+									]
+								}
+							},
+							"status": "Conflict",
+							"code": 409,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:12.6150437\",\n  \"status\": 409,\n  \"error\": \"Conflict\",\n  \"code\": \"DUPLICATE_RESOURCE\",\n  \"message\": \"Company already exists with tax id '20123456789'\",\n  \"path\": \"/api/v1/companies\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear empresa con body inválido → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test(\"code = VALIDATION_ERROR\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"X\",\n  \"taxId\": \"123\",\n  \"email\": \"no-es-email\",\n  \"city\": \"\",\n  \"latitude\": -95,\n  \"longitude\": -77.0428\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/companies",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies"
+							]
+						},
+						"description": "Caso de error: falla Bean Validation (`MethodArgumentNotValidException`) → `400`, `code: VALIDATION_ERROR`, con la lista de campos inválidos en `details` (ordenada por campo).\n\nNota: los mensajes de `details` salen en el idioma del servidor (Hibernate Validator usa el locale de la JVM), salvo los que el DTO define explícitamente, como el del RUC."
+					},
+					"response": [
+						{
+							"name": "400 Bad Request",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"X\",\n  \"taxId\": \"123\",\n  \"email\": \"no-es-email\",\n  \"city\": \"\",\n  \"latitude\": -95,\n  \"longitude\": -77.0428\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/companies",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies"
+									]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:12.6906589\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"VALIDATION_ERROR\",\n  \"message\": \"One or more fields are invalid\",\n  \"path\": \"/api/v1/companies\",\n  \"details\": [\n    {\n      \"field\": \"city\",\n      \"rejectedValue\": \"\",\n      \"message\": \"no debe estar vacío\"\n    },\n    {\n      \"field\": \"email\",\n      \"rejectedValue\": \"no-es-email\",\n      \"message\": \"debe ser una dirección de correo electrónico con formato correcto\"\n    },\n    {\n      \"field\": \"latitude\",\n      \"rejectedValue\": -95,\n      \"message\": \"debe ser mayor que o igual a -90.0\"\n    },\n    {\n      \"field\": \"name\",\n      \"rejectedValue\": \"X\",\n      \"message\": \"el tamaño debe estar entre 2 y 150\"\n    },\n    {\n      \"field\": \"taxId\",\n      \"rejectedValue\": \"123\",\n      \"message\": \"Tax ID (RUC) must contain exactly 11 digits\"\n    }\n  ]\n}"
+						}
+					]
+				},
+				{
+					"name": "Obtener empresa por id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/companies/{{companyAId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies",
+								"{{companyAId}}"
+							]
+						},
+						"description": "Devuelve una empresa (`CompanyResponse`) por id. Público: no requiere `X-Company-Id`."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/companies/{{companyAId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies",
+										"{{companyAId}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"name\": \"Maquinarias Andinas SAC\",\n  \"taxId\": \"20123456789\",\n  \"email\": \"contacto@andinas.pe\",\n  \"phone\": \"+51 1 4567890\",\n  \"address\": \"Av. Argentina 1234\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464000,\n  \"longitude\": -77.0428000,\n  \"active\": true,\n  \"createdAt\": \"2026-09-22T12:21:12.459634\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Obtener empresa inexistente → 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 404\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"pm.test(\"code = RESOURCE_NOT_FOUND\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"RESOURCE_NOT_FOUND\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/companies/{{missingId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies",
+								"{{missingId}}"
+							]
+						},
+						"description": "Caso de error: `ResourceNotFoundException` → `404`, `code: RESOURCE_NOT_FOUND`. Usa la variable `missingId` (un id que no existe)."
+					},
+					"response": [
+						{
+							"name": "404 Not Found",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/companies/{{missingId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies",
+										"{{missingId}}"
+									]
+								}
+							},
+							"status": "Not Found",
+							"code": 404,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:12.7379238\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"RESOURCE_NOT_FOUND\",\n  \"message\": \"Company not found with id 999999\",\n  \"path\": \"/api/v1/companies/999999\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Listar empresas activas",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/companies?city=Lima&page=0&size=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies"
+							],
+							"query": [
+								{
+									"key": "city",
+									"value": "Lima",
+									"description": "Opcional. Filtra por ciudad (sin distinguir mayúsculas)."
+								},
+								{
+									"key": "page",
+									"value": "0",
+									"description": "Página (desde 0). Default 0."
+								},
+								{
+									"key": "size",
+									"value": "20",
+									"description": "Tamaño de página, 1–100. Default 20."
+								}
+							]
+						},
+						"description": "Lista paginada (`PageResponse<CompanyResponse>`) de empresas **activas**, ordenadas por nombre. Las desactivadas con `DELETE` no aparecen."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/companies?city=Lima&page=0&size=20",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies"
+									],
+									"query": [
+										{
+											"key": "city",
+											"value": "Lima",
+											"description": "Opcional. Filtra por ciudad (sin distinguir mayúsculas)."
+										},
+										{
+											"key": "page",
+											"value": "0",
+											"description": "Página (desde 0). Default 0."
+										},
+										{
+											"key": "size",
+											"value": "20",
+											"description": "Tamaño de página, 1–100. Default 20."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"content\": [\n    {\n      \"id\": 2,\n      \"name\": \"Constructora Pacifico SAC\",\n      \"taxId\": \"20987654321\",\n      \"email\": \"obras@pacifico.pe\",\n      \"phone\": \"+51 1 7654321\",\n      \"address\": \"Av. Javier Prado 500\",\n      \"city\": \"Lima\",\n      \"latitude\": -12.0900000,\n      \"longitude\": -77.0200000,\n      \"active\": true,\n      \"createdAt\": \"2026-09-22T12:21:12.591364\"\n    },\n    {\n      \"id\": 1,\n      \"name\": \"Maquinarias Andinas SAC\",\n      \"taxId\": \"20123456789\",\n      \"email\": \"contacto@andinas.pe\",\n      \"phone\": \"+51 1 4567890\",\n      \"address\": \"Av. Argentina 1234\",\n      \"city\": \"Lima\",\n      \"latitude\": -12.0464000,\n      \"longitude\": -77.0428000,\n      \"active\": true,\n      \"createdAt\": \"2026-09-22T12:21:12.459634\"\n    }\n  ],\n  \"page\": 0,\n  \"size\": 20,\n  \"totalElements\": 2,\n  \"totalPages\": 1,\n  \"last\": true\n}"
+						}
+					]
+				},
+				{
+					"name": "Actualizar empresa (PATCH parcial)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+51 1 4000000\",\n  \"address\": \"Av. Argentina 1500\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/companies/{{companyAId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies",
+								"{{companyAId}}"
+							]
+						},
+						"description": "Actualización parcial (`CompanyUpdateRequest`): los campos `null` u omitidos se conservan. Campos editables: `name`, `email`, `phone`, `address`, `city`, `latitude`, `longitude`. El `taxId` es inmutable.\n\nRequiere `X-Company-Id` igual al `{id}` de la ruta."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"phone\": \"+51 1 4000000\",\n  \"address\": \"Av. Argentina 1500\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/companies/{{companyAId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies",
+										"{{companyAId}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"name\": \"Maquinarias Andinas SAC\",\n  \"taxId\": \"20123456789\",\n  \"email\": \"contacto@andinas.pe\",\n  \"phone\": \"+51 1 4000000\",\n  \"address\": \"Av. Argentina 1500\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464000,\n  \"longitude\": -77.0428000,\n  \"active\": true,\n  \"createdAt\": \"2026-09-22T12:21:12.459634\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Actualizar empresa ajena → 403",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 403\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});",
+									"pm.test(\"code = FORBIDDEN_OPERATION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"FORBIDDEN_OPERATION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+51 1 4000000\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/companies/{{companyAId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies",
+								"{{companyAId}}"
+							]
+						},
+						"description": "Caso de error: B intenta editar la empresa A. `ForbiddenOperationException` → `403`, `code: FORBIDDEN_OPERATION`."
+					},
+					"response": [
+						{
+							"name": "403 Forbidden",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"phone\": \"+51 1 4000000\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/companies/{{companyAId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies",
+										"{{companyAId}}"
+									]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:12.8176841\",\n  \"status\": 403,\n  \"error\": \"Forbidden\",\n  \"code\": \"FORBIDDEN_OPERATION\",\n  \"message\": \"The acting company does not own company 1\",\n  \"path\": \"/api/v1/companies/1\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Actualizar empresa sin X-Company-Id → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test(\"code = MISSING_HEADER\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"MISSING_HEADER\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+51 1 4000000\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/companies/{{companyAId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies",
+								"{{companyAId}}"
+							]
+						},
+						"description": "Caso de error: falta la cabecera obligatoria. Hoy no existe autenticación, así que la ausencia de la cabecera **no** da `401`: Spring lanza `MissingRequestHeaderException` → `400`, `code: MISSING_HEADER`.\n\n_Pendiente (brief 05 – JWT, no mergeado):_ cuando exista el filtro JWT, una petición sin token debería responder `401`."
+					},
+					"response": [
+						{
+							"name": "400 Bad Request",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"phone\": \"+51 1 4000000\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/companies/{{companyAId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies",
+										"{{companyAId}}"
+									]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:12.8276958\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"MISSING_HEADER\",\n  \"message\": \"Required header X-Company-Id is missing\",\n  \"path\": \"/api/v1/companies/1\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear empresa temporal",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"tempCompanyId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Empresa Temporal SAC\",\n  \"taxId\": \"20555555555\",\n  \"email\": \"temporal@empresa.pe\",\n  \"city\": \"Arequipa\",\n  \"latitude\": -16.3989,\n  \"longitude\": -71.5350\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/companies",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies"
+							]
+						},
+						"description": "Empresa auxiliar que solo existe para demostrar la desactivación sin afectar a A ni a B. Guarda el `id` en `tempCompanyId`."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Empresa Temporal SAC\",\n  \"taxId\": \"20555555555\",\n  \"email\": \"temporal@empresa.pe\",\n  \"city\": \"Arequipa\",\n  \"latitude\": -16.3989,\n  \"longitude\": -71.5350\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/companies",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/companies/3"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 3,\n  \"name\": \"Empresa Temporal SAC\",\n  \"taxId\": \"20555555555\",\n  \"email\": \"temporal@empresa.pe\",\n  \"phone\": null,\n  \"address\": null,\n  \"city\": \"Arequipa\",\n  \"latitude\": -16.3989,\n  \"longitude\": -71.5350,\n  \"active\": true,\n  \"createdAt\": \"2026-09-22T12:21:12.85129\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Desactivar empresa (soft delete)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 204\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{tempCompanyId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/companies/{{tempCompanyId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies",
+								"{{tempCompanyId}}"
+							]
+						},
+						"description": "Borrado lógico: marca la empresa como `active: false` (conserva su historial de reservas). Devuelve `204 No Content`. Requiere `X-Company-Id` igual al `{id}`; con otra empresa → `403`."
+					},
+					"response": [
+						{
+							"name": "204 No Content",
+							"originalRequest": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{tempCompanyId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/companies/{{tempCompanyId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies",
+										"{{tempCompanyId}}"
+									]
+								}
+							},
+							"status": "No Content",
+							"code": 204,
+							"_postman_previewlanguage": "text",
+							"header": [],
+							"cookie": [],
+							"body": ""
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"description": "`UserController` — `/api/v1/users`, más `GET /api/v1/companies/{id}/users` (en `CompanyController`). `PATCH` y `DELETE` exigen `X-Company-Id` de la misma empresa del usuario. Una empresa nunca puede quedarse sin un `ADMIN`.",
+			"item": [
+				{
+					"name": "Crear usuario ADMIN en empresa A",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"userId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"firstName\": \"Lucia\",\n  \"lastName\": \"Quispe\",\n  \"email\": \"lucia.quispe@andinas.pe\",\n  \"password\": \"Secreta123\",\n  \"phone\": \"+51 987654321\",\n  \"role\": \"ADMIN\",\n  \"companyId\": {{companyAId}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users"
+							]
+						},
+						"description": "Crea un usuario (`UserCreateRequest`) en la empresa A. Guarda el `id` en `userId`.\n\nCampos: `firstName`, `lastName`, `email` (único), `password` (8–64, con minúscula, mayúscula y dígito; se guarda con BCrypt y nunca se devuelve), `phone`, `role` (`ADMIN` | `MANAGER` | `OPERATOR`), `companyId`."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"firstName\": \"Lucia\",\n  \"lastName\": \"Quispe\",\n  \"email\": \"lucia.quispe@andinas.pe\",\n  \"password\": \"Secreta123\",\n  \"phone\": \"+51 987654321\",\n  \"role\": \"ADMIN\",\n  \"companyId\": {{companyAId}}\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/users",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"users"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/users/1"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"firstName\": \"Lucia\",\n  \"lastName\": \"Quispe\",\n  \"email\": \"lucia.quispe@andinas.pe\",\n  \"phone\": \"+51 987654321\",\n  \"role\": \"ADMIN\",\n  \"enabled\": true,\n  \"companyId\": 1,\n  \"companyName\": \"Maquinarias Andinas SAC\",\n  \"createdAt\": \"2026-09-22T12:21:13.004227\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear usuario OPERATOR en empresa A",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"operatorUserId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"firstName\": \"Jorge\",\n  \"lastName\": \"Huaman\",\n  \"email\": \"jorge.huaman@andinas.pe\",\n  \"password\": \"Secreta123\",\n  \"role\": \"OPERATOR\",\n  \"companyId\": {{companyAId}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users"
+							]
+						},
+						"description": "Segundo usuario de A, usado para demostrar la edición y la deshabilitación. Guarda `operatorUserId`."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"firstName\": \"Jorge\",\n  \"lastName\": \"Huaman\",\n  \"email\": \"jorge.huaman@andinas.pe\",\n  \"password\": \"Secreta123\",\n  \"role\": \"OPERATOR\",\n  \"companyId\": {{companyAId}}\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/users",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"users"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/users/2"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 2,\n  \"firstName\": \"Jorge\",\n  \"lastName\": \"Huaman\",\n  \"email\": \"jorge.huaman@andinas.pe\",\n  \"phone\": null,\n  \"role\": \"OPERATOR\",\n  \"enabled\": true,\n  \"companyId\": 1,\n  \"companyName\": \"Maquinarias Andinas SAC\",\n  \"createdAt\": \"2026-09-22T12:21:13.112899\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear usuario con email duplicado → 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 409\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"pm.test(\"code = DUPLICATE_RESOURCE\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"DUPLICATE_RESOURCE\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"firstName\": \"Lucia\",\n  \"lastName\": \"Quispe\",\n  \"email\": \"LUCIA.QUISPE@andinas.pe\",\n  \"password\": \"Secreta123\",\n  \"role\": \"OPERATOR\",\n  \"companyId\": {{companyAId}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users"
+							]
+						},
+						"description": "Caso de error: el email ya existe (la comparación ignora mayúsculas) → `409 DUPLICATE_RESOURCE`."
+					},
+					"response": [
+						{
+							"name": "409 Conflict",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"firstName\": \"Lucia\",\n  \"lastName\": \"Quispe\",\n  \"email\": \"LUCIA.QUISPE@andinas.pe\",\n  \"password\": \"Secreta123\",\n  \"role\": \"OPERATOR\",\n  \"companyId\": {{companyAId}}\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/users",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"users"
+									]
+								}
+							},
+							"status": "Conflict",
+							"code": 409,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.1249486\",\n  \"status\": 409,\n  \"error\": \"Conflict\",\n  \"code\": \"DUPLICATE_RESOURCE\",\n  \"message\": \"User already exists with email 'LUCIA.QUISPE@andinas.pe'\",\n  \"path\": \"/api/v1/users\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Obtener usuario por id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"{{userId}}"
+							]
+						},
+						"description": "Devuelve un `UserResponse` (sin contraseña). Público."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/users/{{userId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"users",
+										"{{userId}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"firstName\": \"Lucia\",\n  \"lastName\": \"Quispe\",\n  \"email\": \"lucia.quispe@andinas.pe\",\n  \"phone\": \"+51 987654321\",\n  \"role\": \"ADMIN\",\n  \"enabled\": true,\n  \"companyId\": 1,\n  \"companyName\": \"Maquinarias Andinas SAC\",\n  \"createdAt\": \"2026-09-22T12:21:13.004227\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Listar usuarios de una empresa",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/companies/{{companyAId}}/users?role=ADMIN&page=0&size=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies",
+								"{{companyAId}}",
+								"users"
+							],
+							"query": [
+								{
+									"key": "role",
+									"value": "ADMIN",
+									"description": "Opcional. ADMIN | MANAGER | OPERATOR."
+								},
+								{
+									"key": "page",
+									"value": "0",
+									"description": "Página (desde 0)."
+								},
+								{
+									"key": "size",
+									"value": "20",
+									"description": "Tamaño de página, 1–100."
+								}
+							]
+						},
+						"description": "Endpoint de `CompanyController`: usuarios de una empresa, paginados y ordenados por apellido, con filtro opcional por rol. `404` si la empresa no existe."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/companies/{{companyAId}}/users?role=ADMIN&page=0&size=20",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies",
+										"{{companyAId}}",
+										"users"
+									],
+									"query": [
+										{
+											"key": "role",
+											"value": "ADMIN",
+											"description": "Opcional. ADMIN | MANAGER | OPERATOR."
+										},
+										{
+											"key": "page",
+											"value": "0",
+											"description": "Página (desde 0)."
+										},
+										{
+											"key": "size",
+											"value": "20",
+											"description": "Tamaño de página, 1–100."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"content\": [\n    {\n      \"id\": 1,\n      \"firstName\": \"Lucia\",\n      \"lastName\": \"Quispe\",\n      \"email\": \"lucia.quispe@andinas.pe\",\n      \"phone\": \"+51 987654321\",\n      \"role\": \"ADMIN\",\n      \"enabled\": true,\n      \"companyId\": 1,\n      \"companyName\": \"Maquinarias Andinas SAC\",\n      \"createdAt\": \"2026-09-22T12:21:13.004227\"\n    }\n  ],\n  \"page\": 0,\n  \"size\": 20,\n  \"totalElements\": 1,\n  \"totalPages\": 1,\n  \"last\": true\n}"
+						}
+					]
+				},
+				{
+					"name": "Actualizar usuario (PATCH parcial)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Incluye \\\"role\\\":\\\"MANAGER\\\"\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"role\\\":\\\"MANAGER\\\"\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"+51 999888777\",\n  \"role\": \"MANAGER\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/{{operatorUserId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"{{operatorUserId}}"
+							]
+						},
+						"description": "Actualización parcial (`UserUpdateRequest`): `firstName`, `lastName`, `phone`, `role`. Email y contraseña no se cambian por aquí. Requiere `X-Company-Id` de la empresa del usuario (si no, `403`)."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"phone\": \"+51 999888777\",\n  \"role\": \"MANAGER\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/users/{{operatorUserId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"users",
+										"{{operatorUserId}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 2,\n  \"firstName\": \"Jorge\",\n  \"lastName\": \"Huaman\",\n  \"email\": \"jorge.huaman@andinas.pe\",\n  \"phone\": \"+51 999888777\",\n  \"role\": \"MANAGER\",\n  \"enabled\": true,\n  \"companyId\": 1,\n  \"companyName\": \"Maquinarias Andinas SAC\",\n  \"createdAt\": \"2026-09-22T12:21:13.112899\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Quitar rol ADMIN al último admin → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test(\"code = INVALID_OPERATION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"INVALID_OPERATION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"role\": \"OPERATOR\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"{{userId}}"
+							]
+						},
+						"description": "Caso de error de negocio: la empresa debe conservar al menos un `ADMIN`. `InvalidOperationException` → `400`, `code: INVALID_OPERATION`."
+					},
+					"response": [
+						{
+							"name": "400 Bad Request",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"role\": \"OPERATOR\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/users/{{userId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"users",
+										"{{userId}}"
+									]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.1897343\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_OPERATION\",\n  \"message\": \"The company must keep at least one administrator\",\n  \"path\": \"/api/v1/users/1\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Deshabilitar usuario",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 204\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{operatorUserId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"{{operatorUserId}}"
+							]
+						},
+						"description": "Deshabilita al usuario (`enabled: false`), no lo borra físicamente. `204 No Content`."
+					},
+					"response": [
+						{
+							"name": "204 No Content",
+							"originalRequest": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/users/{{operatorUserId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"users",
+										"{{operatorUserId}}"
+									]
+								}
+							},
+							"status": "No Content",
+							"code": 204,
+							"_postman_previewlanguage": "text",
+							"header": [],
+							"cookie": [],
+							"body": ""
+						}
+					]
+				},
+				{
+					"name": "Deshabilitar al último admin → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test(\"code = INVALID_OPERATION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"INVALID_OPERATION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/users/{{userId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"{{userId}}"
+							]
+						},
+						"description": "Caso de error: deshabilitar al único `ADMIN` dejaría la empresa sin administrador → `400 INVALID_OPERATION`."
+					},
+					"response": [
+						{
+							"name": "400 Bad Request",
+							"originalRequest": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/users/{{userId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"users",
+										"{{userId}}"
+									]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.2076445\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_OPERATION\",\n  \"message\": \"The company must keep at least one administrator\",\n  \"path\": \"/api/v1/users/1\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Equipment Categories",
+			"description": "`EquipmentCategoryController` — `/api/v1/equipment-categories`. Catálogo global de categorías; ninguna operación exige `X-Company-Id` hoy. El nombre es único sin distinguir mayúsculas.\n\n_Pendiente (brief 05 – JWT/roles, no mergeado):_ restringir la escritura a administradores.",
+			"item": [
+				{
+					"name": "Crear categoría",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"categoryId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Excavadoras\",\n  \"description\": \"Excavadoras hidraulicas sobre orugas y ruedas\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/equipment-categories",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment-categories"
+							]
+						},
+						"description": "Crea una categoría (`name` 2–80, `description` ≤255). Guarda el `id` en `categoryId`."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Excavadoras\",\n  \"description\": \"Excavadoras hidraulicas sobre orugas y ruedas\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/equipment-categories",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment-categories"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/equipment-categories/1"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"name\": \"Excavadoras\",\n  \"description\": \"Excavadoras hidraulicas sobre orugas y ruedas\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear categoría duplicada → 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 409\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"pm.test(\"code = DUPLICATE_RESOURCE\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"DUPLICATE_RESOURCE\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"excavadoras\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/equipment-categories",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment-categories"
+							]
+						},
+						"description": "Caso de error: ya existe una categoría con ese nombre (sin distinguir mayúsculas) → `409`."
+					},
+					"response": [
+						{
+							"name": "409 Conflict",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"excavadoras\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/equipment-categories",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment-categories"
+									]
+								}
+							},
+							"status": "Conflict",
+							"code": 409,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.2302317\",\n  \"status\": 409,\n  \"error\": \"Conflict\",\n  \"code\": \"DUPLICATE_RESOURCE\",\n  \"message\": \"EquipmentCategory already exists with name 'excavadoras'\",\n  \"path\": \"/api/v1/equipment-categories\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Listar categorías",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/equipment-categories",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment-categories"
+							]
+						},
+						"description": "Devuelve **todas** las categorías ordenadas por nombre, como arreglo JSON plano (no paginado)."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/equipment-categories",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment-categories"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "[\n  {\n    \"id\": 1,\n    \"name\": \"Excavadoras\",\n    \"description\": \"Excavadoras hidraulicas sobre orugas y ruedas\"\n  }\n]"
+						}
+					]
+				},
+				{
+					"name": "Obtener categoría por id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/equipment-categories/{{categoryId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment-categories",
+								"{{categoryId}}"
+							]
+						},
+						"description": "Devuelve una categoría. `404` si no existe."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/equipment-categories/{{categoryId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment-categories",
+										"{{categoryId}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"name\": \"Excavadoras\",\n  \"description\": \"Excavadoras hidraulicas sobre orugas y ruedas\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Actualizar categoría (PUT)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Excavadoras\",\n  \"description\": \"Excavadoras hidraulicas de 5 a 30 toneladas\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/equipment-categories/{{categoryId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment-categories",
+								"{{categoryId}}"
+							]
+						},
+						"description": "Reemplazo completo con `PUT` (usa el mismo DTO que la creación, así que `name` es obligatorio)."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Excavadoras\",\n  \"description\": \"Excavadoras hidraulicas de 5 a 30 toneladas\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/equipment-categories/{{categoryId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment-categories",
+										"{{categoryId}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"name\": \"Excavadoras\",\n  \"description\": \"Excavadoras hidraulicas de 5 a 30 toneladas\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear categoría temporal",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"tempCategoryId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Temporal\",\n  \"description\": \"Categoria para demostrar el borrado\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/equipment-categories",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment-categories"
+							]
+						},
+						"description": "Categoría auxiliar para demostrar el borrado. Guarda `tempCategoryId`."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Temporal\",\n  \"description\": \"Categoria para demostrar el borrado\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/equipment-categories",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment-categories"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/equipment-categories/2"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 2,\n  \"name\": \"Temporal\",\n  \"description\": \"Categoria para demostrar el borrado\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Eliminar categoría",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 204\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/equipment-categories/{{tempCategoryId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment-categories",
+								"{{tempCategoryId}}"
+							]
+						},
+						"description": "Borrado físico de la categoría. `204 No Content`."
+					},
+					"response": [
+						{
+							"name": "204 No Content",
+							"originalRequest": {
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/equipment-categories/{{tempCategoryId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment-categories",
+										"{{tempCategoryId}}"
+									]
+								}
+							},
+							"status": "No Content",
+							"code": 204,
+							"_postman_previewlanguage": "text",
+							"header": [],
+							"cookie": [],
+							"body": ""
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Equipment",
+			"description": "`EquipmentController` — `/api/v1/equipment`, más `GET /api/v1/companies/{id}/equipment` (en `CompanyController`). `PATCH` y `DELETE` exigen `X-Company-Id` de la empresa dueña.",
+			"item": [
+				{
+					"name": "Crear equipo (dueño A)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"equipmentId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Excavadora CAT 320\",\n  \"description\": \"Excavadora hidraulica de 20 toneladas\",\n  \"brand\": \"Caterpillar\",\n  \"model\": \"320 GC\",\n  \"manufactureYear\": 2021,\n  \"serialNumber\": \"CAT320-0001\",\n  \"specifications\": \"Potencia 121 kW; cucharon 1.19 m3\",\n  \"dailyRate\": 850.00,\n  \"weeklyRate\": 5100.00,\n  \"securityDeposit\": 3000.00,\n  \"currency\": \"PEN\",\n  \"address\": \"Av. Argentina 1234\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464,\n  \"longitude\": -77.0428,\n  \"imageUrls\": [\"https://example.com/img/cat320-1.jpg\"],\n  \"categoryIds\": [{{categoryId}}],\n  \"ownerCompanyId\": {{companyAId}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/equipment",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment"
+							]
+						},
+						"description": "Publica un equipo (`EquipmentCreateRequest`) de la empresa A. Guarda el `id` en `equipmentId`.\n\nObligatorios: `name`, `brand`, `model`, `dailyRate` (≥0.01), `securityDeposit` (≥0), `city`, `latitude`, `longitude`, `categoryIds` (no vacío), `ownerCompanyId`. Opcionales: `description`, `manufactureYear` (1950–2100), `serialNumber` (único), `specifications`, `weeklyRate`, `currency` (ISO de 3 letras, default `PEN`), `address`, `imageUrls` (máx. 10).\n\nHoy el dueño se toma de `ownerCompanyId` del body, no de `X-Company-Id`. _Pendiente (brief 05 – JWT):_ tomar el dueño del token."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Excavadora CAT 320\",\n  \"description\": \"Excavadora hidraulica de 20 toneladas\",\n  \"brand\": \"Caterpillar\",\n  \"model\": \"320 GC\",\n  \"manufactureYear\": 2021,\n  \"serialNumber\": \"CAT320-0001\",\n  \"specifications\": \"Potencia 121 kW; cucharon 1.19 m3\",\n  \"dailyRate\": 850.00,\n  \"weeklyRate\": 5100.00,\n  \"securityDeposit\": 3000.00,\n  \"currency\": \"PEN\",\n  \"address\": \"Av. Argentina 1234\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464,\n  \"longitude\": -77.0428,\n  \"imageUrls\": [\"https://example.com/img/cat320-1.jpg\"],\n  \"categoryIds\": [{{categoryId}}],\n  \"ownerCompanyId\": {{companyAId}}\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/equipment",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/equipment/1"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"name\": \"Excavadora CAT 320\",\n  \"description\": \"Excavadora hidraulica de 20 toneladas\",\n  \"brand\": \"Caterpillar\",\n  \"model\": \"320 GC\",\n  \"manufactureYear\": 2021,\n  \"serialNumber\": \"CAT320-0001\",\n  \"specifications\": \"Potencia 121 kW; cucharon 1.19 m3\",\n  \"dailyRate\": 850.00,\n  \"weeklyRate\": 5100.00,\n  \"securityDeposit\": 3000.00,\n  \"currency\": \"PEN\",\n  \"status\": \"AVAILABLE\",\n  \"address\": \"Av. Argentina 1234\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464,\n  \"longitude\": -77.0428,\n  \"imageUrls\": [\n    \"https://example.com/img/cat320-1.jpg\"\n  ],\n  \"categories\": [\n    \"Excavadoras\"\n  ],\n  \"ownerCompanyId\": 1,\n  \"ownerCompanyName\": \"Maquinarias Andinas SAC\",\n  \"createdAt\": \"2026-09-22T12:21:13.33432\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear equipo con body inválido → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test(\"code = VALIDATION_ERROR\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Ex\",\n  \"brand\": \"\",\n  \"model\": \"320\",\n  \"dailyRate\": 0,\n  \"securityDeposit\": -1,\n  \"currency\": \"soles\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464,\n  \"longitude\": -77.0428,\n  \"categoryIds\": [],\n  \"ownerCompanyId\": {{companyAId}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/equipment",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment"
+							]
+						},
+						"description": "Caso de error: varios campos inválidos → `400 VALIDATION_ERROR` con la lista en `details`."
+					},
+					"response": [
+						{
+							"name": "400 Bad Request",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Ex\",\n  \"brand\": \"\",\n  \"model\": \"320\",\n  \"dailyRate\": 0,\n  \"securityDeposit\": -1,\n  \"currency\": \"soles\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464,\n  \"longitude\": -77.0428,\n  \"categoryIds\": [],\n  \"ownerCompanyId\": {{companyAId}}\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/equipment",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment"
+									]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.3543386\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"VALIDATION_ERROR\",\n  \"message\": \"One or more fields are invalid\",\n  \"path\": \"/api/v1/equipment\",\n  \"details\": [\n    {\n      \"field\": \"brand\",\n      \"rejectedValue\": \"\",\n      \"message\": \"no debe estar vacío\"\n    },\n    {\n      \"field\": \"categoryIds\",\n      \"rejectedValue\": [],\n      \"message\": \"no debe estar vacío\"\n    },\n    {\n      \"field\": \"currency\",\n      \"rejectedValue\": \"soles\",\n      \"message\": \"Currency must be a 3-letter ISO code\"\n    },\n    {\n      \"field\": \"dailyRate\",\n      \"rejectedValue\": 0,\n      \"message\": \"debe ser mayor que o igual a 0.01\"\n    },\n    {\n      \"field\": \"name\",\n      \"rejectedValue\": \"Ex\",\n      \"message\": \"el tamaño debe estar entre 3 y 150\"\n    },\n    {\n      \"field\": \"securityDeposit\",\n      \"rejectedValue\": -1,\n      \"message\": \"debe ser mayor que o igual a 0.00\"\n    }\n  ]\n}"
+						}
+					]
+				},
+				{
+					"name": "Obtener equipo por id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/equipment/{{equipmentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment",
+								"{{equipmentId}}"
+							]
+						},
+						"description": "Detalle completo (`EquipmentResponse`), incluidas las categorías (por nombre) y el dueño. Público."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/equipment/{{equipmentId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment",
+										"{{equipmentId}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"name\": \"Excavadora CAT 320\",\n  \"description\": \"Excavadora hidraulica de 20 toneladas\",\n  \"brand\": \"Caterpillar\",\n  \"model\": \"320 GC\",\n  \"manufactureYear\": 2021,\n  \"serialNumber\": \"CAT320-0001\",\n  \"specifications\": \"Potencia 121 kW; cucharon 1.19 m3\",\n  \"dailyRate\": 850.00,\n  \"weeklyRate\": 5100.00,\n  \"securityDeposit\": 3000.00,\n  \"currency\": \"PEN\",\n  \"status\": \"AVAILABLE\",\n  \"address\": \"Av. Argentina 1234\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464000,\n  \"longitude\": -77.0428000,\n  \"imageUrls\": [\n    \"https://example.com/img/cat320-1.jpg\"\n  ],\n  \"categories\": [\n    \"Excavadoras\"\n  ],\n  \"ownerCompanyId\": 1,\n  \"ownerCompanyName\": \"Maquinarias Andinas SAC\",\n  \"createdAt\": \"2026-09-22T12:21:13.33432\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Actualizar equipo (dueño)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Incluye \\\"dailyRate\\\":800\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"dailyRate\\\":800\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"dailyRate\": 800.00,\n  \"description\": \"Excavadora hidraulica de 20 t, mantenimiento al dia\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/equipment/{{equipmentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment",
+								"{{equipmentId}}"
+							]
+						},
+						"description": "Actualización parcial (`EquipmentUpdateRequest`): todos los campos son opcionales. Además de los de creación (salvo `serialNumber` y `ownerCompanyId`) acepta `status` (`AVAILABLE` | `RENTED` | `MAINTENANCE` | `INACTIVE`). Si se envía `categoryIds`, reemplaza las categorías. Requiere `X-Company-Id` del dueño."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"dailyRate\": 800.00,\n  \"description\": \"Excavadora hidraulica de 20 t, mantenimiento al dia\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/equipment/{{equipmentId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment",
+										"{{equipmentId}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"name\": \"Excavadora CAT 320\",\n  \"description\": \"Excavadora hidraulica de 20 t, mantenimiento al dia\",\n  \"brand\": \"Caterpillar\",\n  \"model\": \"320 GC\",\n  \"manufactureYear\": 2021,\n  \"serialNumber\": \"CAT320-0001\",\n  \"specifications\": \"Potencia 121 kW; cucharon 1.19 m3\",\n  \"dailyRate\": 800.00,\n  \"weeklyRate\": 5100.00,\n  \"securityDeposit\": 3000.00,\n  \"currency\": \"PEN\",\n  \"status\": \"AVAILABLE\",\n  \"address\": \"Av. Argentina 1234\",\n  \"city\": \"Lima\",\n  \"latitude\": -12.0464000,\n  \"longitude\": -77.0428000,\n  \"imageUrls\": [\n    \"https://example.com/img/cat320-1.jpg\"\n  ],\n  \"categories\": [\n    \"Excavadoras\"\n  ],\n  \"ownerCompanyId\": 1,\n  \"ownerCompanyName\": \"Maquinarias Andinas SAC\",\n  \"createdAt\": \"2026-09-22T12:21:13.33432\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Actualizar equipo ajeno → 403",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 403\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});",
+									"pm.test(\"code = FORBIDDEN_OPERATION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"FORBIDDEN_OPERATION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"dailyRate\": 1.00\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/equipment/{{equipmentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment",
+								"{{equipmentId}}"
+							]
+						},
+						"description": "Caso de error: B intenta editar el equipo de A → `403 FORBIDDEN_OPERATION`."
+					},
+					"response": [
+						{
+							"name": "403 Forbidden",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"dailyRate\": 1.00\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/equipment/{{equipmentId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment",
+										"{{equipmentId}}"
+									]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.4206795\",\n  \"status\": 403,\n  \"error\": \"Forbidden\",\n  \"code\": \"FORBIDDEN_OPERATION\",\n  \"message\": \"The acting company does not own equipment 1\",\n  \"path\": \"/api/v1/equipment/1\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Buscar equipos por proximidad",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Incluye \\\"totalElements\\\":1\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"totalElements\\\":1\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/equipment/search?latitude=-12.0464&longitude=-77.0428&radiusKm=25&categoryId={{categoryId}}&maxDailyRate=1000&startDate={{startDate}}&endDate={{endDate}}&excludeOwnerId={{companyBId}}&page=0&size=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment",
+								"search"
+							],
+							"query": [
+								{
+									"key": "latitude",
+									"value": "-12.0464",
+									"description": "Obligatorio. -90..90."
+								},
+								{
+									"key": "longitude",
+									"value": "-77.0428",
+									"description": "Obligatorio. -180..180."
+								},
+								{
+									"key": "radiusKm",
+									"value": "25",
+									"description": "Radio en km, 0.1–1000. Default 25."
+								},
+								{
+									"key": "categoryId",
+									"value": "{{categoryId}}",
+									"description": "Opcional. 404 si la categoría no existe."
+								},
+								{
+									"key": "maxDailyRate",
+									"value": "1000",
+									"description": "Opcional. Tarifa diaria máxima."
+								},
+								{
+									"key": "startDate",
+									"value": "{{startDate}}",
+									"description": "Opcional (ISO yyyy-MM-dd). Si se envía, endDate también; excluye equipos ocupados en el rango."
+								},
+								{
+									"key": "endDate",
+									"value": "{{endDate}}",
+									"description": "Opcional (ISO yyyy-MM-dd)."
+								},
+								{
+									"key": "excludeOwnerId",
+									"value": "{{companyBId}}",
+									"description": "Opcional. Excluye los equipos de esta empresa (p. ej. la propia)."
+								},
+								{
+									"key": "page",
+									"value": "0",
+									"description": "Página (desde 0)."
+								},
+								{
+									"key": "size",
+									"value": "20",
+									"description": "Tamaño de página, 1–100."
+								}
+							]
+						},
+						"description": "Búsqueda geoespacial del catálogo (Haversine), ordenada por distancia. También acepta `city` (opcional). Devuelve `PageResponse<EquipmentSummaryResponse>`.\n\nErrores: `startDate` sin `endDate` o rango invertido → `400 INVALID_RESERVATION_DATES`; parámetros fuera de rango → `400 VALIDATION_ERROR`."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/equipment/search?latitude=-12.0464&longitude=-77.0428&radiusKm=25&categoryId={{categoryId}}&maxDailyRate=1000&startDate={{startDate}}&endDate={{endDate}}&excludeOwnerId={{companyBId}}&page=0&size=20",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment",
+										"search"
+									],
+									"query": [
+										{
+											"key": "latitude",
+											"value": "-12.0464",
+											"description": "Obligatorio. -90..90."
+										},
+										{
+											"key": "longitude",
+											"value": "-77.0428",
+											"description": "Obligatorio. -180..180."
+										},
+										{
+											"key": "radiusKm",
+											"value": "25",
+											"description": "Radio en km, 0.1–1000. Default 25."
+										},
+										{
+											"key": "categoryId",
+											"value": "{{categoryId}}",
+											"description": "Opcional. 404 si la categoría no existe."
+										},
+										{
+											"key": "maxDailyRate",
+											"value": "1000",
+											"description": "Opcional. Tarifa diaria máxima."
+										},
+										{
+											"key": "startDate",
+											"value": "{{startDate}}",
+											"description": "Opcional (ISO yyyy-MM-dd). Si se envía, endDate también; excluye equipos ocupados en el rango."
+										},
+										{
+											"key": "endDate",
+											"value": "{{endDate}}",
+											"description": "Opcional (ISO yyyy-MM-dd)."
+										},
+										{
+											"key": "excludeOwnerId",
+											"value": "{{companyBId}}",
+											"description": "Opcional. Excluye los equipos de esta empresa (p. ej. la propia)."
+										},
+										{
+											"key": "page",
+											"value": "0",
+											"description": "Página (desde 0)."
+										},
+										{
+											"key": "size",
+											"value": "20",
+											"description": "Tamaño de página, 1–100."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"content\": [\n    {\n      \"id\": 1,\n      \"name\": \"Excavadora CAT 320\",\n      \"brand\": \"Caterpillar\",\n      \"model\": \"320 GC\",\n      \"dailyRate\": 800.00,\n      \"currency\": \"PEN\",\n      \"status\": \"AVAILABLE\",\n      \"city\": \"Lima\",\n      \"latitude\": -12.0464000,\n      \"longitude\": -77.0428000,\n      \"primaryImageUrl\": \"https://example.com/img/cat320-1.jpg\",\n      \"ownerCompanyId\": 1,\n      \"ownerCompanyName\": \"Maquinarias Andinas SAC\"\n    }\n  ],\n  \"page\": 0,\n  \"size\": 20,\n  \"totalElements\": 1,\n  \"totalPages\": 1,\n  \"last\": true\n}"
+						}
+					]
+				},
+				{
+					"name": "Buscar sin latitude → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test(\"code = MISSING_PARAMETER\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"MISSING_PARAMETER\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/equipment/search?longitude=-77.0428",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment",
+								"search"
+							],
+							"query": [
+								{
+									"key": "longitude",
+									"value": "-77.0428",
+									"description": "Falta latitude a propósito."
+								}
+							]
+						},
+						"description": "Caso de error: falta un query param obligatorio → `400`, `code: MISSING_PARAMETER`."
+					},
+					"response": [
+						{
+							"name": "400 Bad Request",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/equipment/search?longitude=-77.0428",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment",
+										"search"
+									],
+									"query": [
+										{
+											"key": "longitude",
+											"value": "-77.0428",
+											"description": "Falta latitude a propósito."
+										}
+									]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.4684125\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"MISSING_PARAMETER\",\n  \"message\": \"Required parameter latitude is missing\",\n  \"path\": \"/api/v1/equipment/search\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Listar equipos de una empresa",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/companies/{{companyAId}}/equipment?page=0&size=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"companies",
+								"{{companyAId}}",
+								"equipment"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "0",
+									"description": "Página (desde 0)."
+								},
+								{
+									"key": "size",
+									"value": "20",
+									"description": "Tamaño de página, 1–100."
+								}
+							]
+						},
+						"description": "Endpoint de `CompanyController`: equipos de una empresa, más recientes primero. `404` si la empresa no existe."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/companies/{{companyAId}}/equipment?page=0&size=20",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"companies",
+										"{{companyAId}}",
+										"equipment"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "0",
+											"description": "Página (desde 0)."
+										},
+										{
+											"key": "size",
+											"value": "20",
+											"description": "Tamaño de página, 1–100."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"content\": [\n    {\n      \"id\": 1,\n      \"name\": \"Excavadora CAT 320\",\n      \"brand\": \"Caterpillar\",\n      \"model\": \"320 GC\",\n      \"dailyRate\": 800.00,\n      \"currency\": \"PEN\",\n      \"status\": \"AVAILABLE\",\n      \"city\": \"Lima\",\n      \"latitude\": -12.0464000,\n      \"longitude\": -77.0428000,\n      \"primaryImageUrl\": \"https://example.com/img/cat320-1.jpg\",\n      \"ownerCompanyId\": 1,\n      \"ownerCompanyName\": \"Maquinarias Andinas SAC\"\n    }\n  ],\n  \"page\": 0,\n  \"size\": 20,\n  \"totalElements\": 1,\n  \"totalPages\": 1,\n  \"last\": true\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear equipo temporal",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"tempEquipmentId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Retroexcavadora JCB 3CX\",\n  \"brand\": \"JCB\",\n  \"model\": \"3CX\",\n  \"dailyRate\": 600.00,\n  \"securityDeposit\": 2000.00,\n  \"city\": \"Lima\",\n  \"latitude\": -12.0500,\n  \"longitude\": -77.0400,\n  \"categoryIds\": [{{categoryId}}],\n  \"ownerCompanyId\": {{companyAId}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/equipment",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment"
+							]
+						},
+						"description": "Equipo auxiliar (sin reservas) para demostrar el borrado. Guarda `tempEquipmentId`."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Retroexcavadora JCB 3CX\",\n  \"brand\": \"JCB\",\n  \"model\": \"3CX\",\n  \"dailyRate\": 600.00,\n  \"securityDeposit\": 2000.00,\n  \"city\": \"Lima\",\n  \"latitude\": -12.0500,\n  \"longitude\": -77.0400,\n  \"categoryIds\": [{{categoryId}}],\n  \"ownerCompanyId\": {{companyAId}}\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/equipment",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/equipment/2"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 2,\n  \"name\": \"Retroexcavadora JCB 3CX\",\n  \"description\": null,\n  \"brand\": \"JCB\",\n  \"model\": \"3CX\",\n  \"manufactureYear\": null,\n  \"serialNumber\": null,\n  \"specifications\": null,\n  \"dailyRate\": 600.00,\n  \"weeklyRate\": null,\n  \"securityDeposit\": 2000.00,\n  \"currency\": \"PEN\",\n  \"status\": \"AVAILABLE\",\n  \"address\": null,\n  \"city\": \"Lima\",\n  \"latitude\": -12.0500,\n  \"longitude\": -77.0400,\n  \"imageUrls\": [],\n  \"categories\": [\n    \"Excavadoras\"\n  ],\n  \"ownerCompanyId\": 1,\n  \"ownerCompanyName\": \"Maquinarias Andinas SAC\",\n  \"createdAt\": \"2026-09-22T12:21:13.491458\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Eliminar equipo ajeno → 403",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 403\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});",
+									"pm.test(\"code = FORBIDDEN_OPERATION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"FORBIDDEN_OPERATION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/equipment/{{tempEquipmentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment",
+								"{{tempEquipmentId}}"
+							]
+						},
+						"description": "Caso de error: B intenta borrar un equipo de A → `403 FORBIDDEN_OPERATION`."
+					},
+					"response": [
+						{
+							"name": "403 Forbidden",
+							"originalRequest": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/equipment/{{tempEquipmentId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment",
+										"{{tempEquipmentId}}"
+									]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.503327\",\n  \"status\": 403,\n  \"error\": \"Forbidden\",\n  \"code\": \"FORBIDDEN_OPERATION\",\n  \"message\": \"The acting company does not own equipment 2\",\n  \"path\": \"/api/v1/equipment/2\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Eliminar equipo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 204\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/equipment/{{tempEquipmentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment",
+								"{{tempEquipmentId}}"
+							]
+						},
+						"description": "Borrado físico de un equipo sin reservas. `204 No Content`.\n\nOtros resultados reales de este endpoint:\n- Con reservas `PENDING`/`CONFIRMED`/`IN_PROGRESS` → `400 INVALID_OPERATION` (ver la carpeta Reservations).\n- Con reservas históricas (`COMPLETED`/`CANCELLED`/`REJECTED`) → `409 DATA_INTEGRITY_VIOLATION`, porque la FK de las reservas impide el borrado; en ese caso conviene pasar el equipo a `status: INACTIVE` con `PATCH`."
+					},
+					"response": [
+						{
+							"name": "204 No Content",
+							"originalRequest": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/equipment/{{tempEquipmentId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment",
+										"{{tempEquipmentId}}"
+									]
+								}
+							},
+							"status": "No Content",
+							"code": 204,
+							"_postman_previewlanguage": "text",
+							"header": [],
+							"cookie": [],
+							"body": ""
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Reservations",
+			"description": "`ReservationController` — `/api/v1/reservations`, más `GET /api/v1/equipment/{id}/reservations` (en `EquipmentController`). Ciclo de vida: `PENDING → CONFIRMED | REJECTED | CANCELLED`, `CONFIRMED → IN_PROGRESS | CANCELLED`, `IN_PROGRESS → COMPLETED`. Solo el dueño del equipo puede pasar a `CONFIRMED`, `REJECTED`, `IN_PROGRESS` y `COMPLETED`; el arrendatario o el dueño pueden cancelar.\n\nLas fechas (`startDate`, `endDate`, `laterStartDate`, `laterEndDate`, `overlapStartDate`, `overlapEndDate`) las calcula el pre-request script de la colección a partir de hoy, porque la API rechaza fechas pasadas.",
+			"item": [
+				{
+					"name": "Consultar disponibilidad (libre)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Incluye \\\"available\\\":true\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"available\\\":true\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/reservations/availability?equipmentId={{equipmentId}}&startDate={{startDate}}&endDate={{endDate}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations",
+								"availability"
+							],
+							"query": [
+								{
+									"key": "equipmentId",
+									"value": "{{equipmentId}}",
+									"description": "Obligatorio."
+								},
+								{
+									"key": "startDate",
+									"value": "{{startDate}}",
+									"description": "Obligatorio (ISO yyyy-MM-dd). No puede ser pasado."
+								},
+								{
+									"key": "endDate",
+									"value": "{{endDate}}",
+									"description": "Obligatorio (ISO yyyy-MM-dd). ≥ startDate; rango máx. 365 días."
+								}
+							]
+						},
+						"description": "Indica si el equipo está libre en el rango (fechas inclusivas). Las reservas `PENDING`, `CONFIRMED` e `IN_PROGRESS` bloquean el calendario. Fechas inválidas → `400 INVALID_RESERVATION_DATES`."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/reservations/availability?equipmentId={{equipmentId}}&startDate={{startDate}}&endDate={{endDate}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations",
+										"availability"
+									],
+									"query": [
+										{
+											"key": "equipmentId",
+											"value": "{{equipmentId}}",
+											"description": "Obligatorio."
+										},
+										{
+											"key": "startDate",
+											"value": "{{startDate}}",
+											"description": "Obligatorio (ISO yyyy-MM-dd). No puede ser pasado."
+										},
+										{
+											"key": "endDate",
+											"value": "{{endDate}}",
+											"description": "Obligatorio (ISO yyyy-MM-dd). ≥ startDate; rango máx. 365 días."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"equipmentId\": 1,\n  \"startDate\": \"2026-09-29\",\n  \"endDate\": \"2026-10-02\",\n  \"available\": true\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear reserva (B alquila equipo de A)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"pm.test(\"Incluye \\\"status\\\":\\\"PENDING\\\"\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"status\\\":\\\"PENDING\\\"\");",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"reservationId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"equipmentId\": {{equipmentId}},\n  \"renterCompanyId\": {{companyBId}},\n  \"startDate\": \"{{startDate}}\",\n  \"endDate\": \"{{endDate}}\",\n  \"notes\": \"Obra en San Isidro, entrega a las 8am\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reservations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations"
+							]
+						},
+						"description": "Crea una reserva `PENDING` (`ReservationCreateRequest`: `equipmentId`, `renterCompanyId`, `startDate`, `endDate`, `notes` ≤500). El precio se calcula en el servidor: `rentalAmount = dailyRate × totalDays`, `totalAmount = rentalAmount + securityDeposit`. Guarda el `id` en `reservationId`.\n\nHoy el arrendatario se toma de `renterCompanyId` del body; este endpoint no lee `X-Company-Id`. _Pendiente (brief 05 – JWT):_ tomar el arrendatario del token."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"equipmentId\": {{equipmentId}},\n  \"renterCompanyId\": {{companyBId}},\n  \"startDate\": \"{{startDate}}\",\n  \"endDate\": \"{{endDate}}\",\n  \"notes\": \"Obra en San Isidro, entrega a las 8am\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reservations",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/reservations/1"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"equipmentId\": 1,\n  \"equipmentName\": \"Excavadora CAT 320\",\n  \"renterCompanyId\": 2,\n  \"renterCompanyName\": \"Constructora Pacifico SAC\",\n  \"startDate\": \"2026-09-29\",\n  \"endDate\": \"2026-10-02\",\n  \"totalDays\": 4,\n  \"dailyRate\": 800.00,\n  \"rentalAmount\": 3200.00,\n  \"securityDeposit\": 3000.00,\n  \"totalAmount\": 6200.00,\n  \"currency\": \"PEN\",\n  \"status\": \"PENDING\",\n  \"notes\": \"Obra en San Isidro, entrega a las 8am\",\n  \"createdAt\": \"2026-09-22T12:21:13.568856\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Consultar disponibilidad (ocupado)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Incluye \\\"available\\\":false\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"available\\\":false\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/reservations/availability?equipmentId={{equipmentId}}&startDate={{startDate}}&endDate={{endDate}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations",
+								"availability"
+							],
+							"query": [
+								{
+									"key": "equipmentId",
+									"value": "{{equipmentId}}",
+									"description": "Obligatorio."
+								},
+								{
+									"key": "startDate",
+									"value": "{{startDate}}",
+									"description": "Obligatorio (ISO yyyy-MM-dd)."
+								},
+								{
+									"key": "endDate",
+									"value": "{{endDate}}",
+									"description": "Obligatorio (ISO yyyy-MM-dd)."
+								}
+							]
+						},
+						"description": "Mismo rango tras crear la reserva: ahora `available: false`."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/reservations/availability?equipmentId={{equipmentId}}&startDate={{startDate}}&endDate={{endDate}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations",
+										"availability"
+									],
+									"query": [
+										{
+											"key": "equipmentId",
+											"value": "{{equipmentId}}",
+											"description": "Obligatorio."
+										},
+										{
+											"key": "startDate",
+											"value": "{{startDate}}",
+											"description": "Obligatorio (ISO yyyy-MM-dd)."
+										},
+										{
+											"key": "endDate",
+											"value": "{{endDate}}",
+											"description": "Obligatorio (ISO yyyy-MM-dd)."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"equipmentId\": 1,\n  \"startDate\": \"2026-09-29\",\n  \"endDate\": \"2026-10-02\",\n  \"available\": false\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear reserva solapada → 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 409\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"pm.test(\"code = EQUIPMENT_NOT_AVAILABLE\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"EQUIPMENT_NOT_AVAILABLE\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"equipmentId\": {{equipmentId}},\n  \"renterCompanyId\": {{companyBId}},\n  \"startDate\": \"{{overlapStartDate}}\",\n  \"endDate\": \"{{overlapEndDate}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reservations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations"
+							]
+						},
+						"description": "Caso de error (overbooking): el rango se cruza con la reserva anterior. `OverbookingException` → `409 Conflict`, `code: EQUIPMENT_NOT_AVAILABLE`. La creación toma un lock pesimista sobre el equipo, así que dos peticiones simultáneas no pueden reservar el mismo rango."
+					},
+					"response": [
+						{
+							"name": "409 Conflict",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"equipmentId\": {{equipmentId}},\n  \"renterCompanyId\": {{companyBId}},\n  \"startDate\": \"{{overlapStartDate}}\",\n  \"endDate\": \"{{overlapEndDate}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reservations",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations"
+									]
+								}
+							},
+							"status": "Conflict",
+							"code": 409,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.6179512\",\n  \"status\": 409,\n  \"error\": \"Conflict\",\n  \"code\": \"EQUIPMENT_NOT_AVAILABLE\",\n  \"message\": \"Equipment 1 is already booked between 2026-10-01 and 2026-10-04\",\n  \"path\": \"/api/v1/reservations\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Reservar equipo propio → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test(\"code = INVALID_OPERATION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"INVALID_OPERATION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"equipmentId\": {{equipmentId}},\n  \"renterCompanyId\": {{companyAId}},\n  \"startDate\": \"{{laterStartDate}}\",\n  \"endDate\": \"{{laterEndDate}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reservations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations"
+							]
+						},
+						"description": "Caso de error de negocio: A intenta alquilar su propio equipo → `400`, `code: INVALID_OPERATION`."
+					},
+					"response": [
+						{
+							"name": "400 Bad Request",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"equipmentId\": {{equipmentId}},\n  \"renterCompanyId\": {{companyAId}},\n  \"startDate\": \"{{laterStartDate}}\",\n  \"endDate\": \"{{laterEndDate}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reservations",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations"
+									]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.6290341\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_OPERATION\",\n  \"message\": \"A company cannot rent its own equipment\",\n  \"path\": \"/api/v1/reservations\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Reservar con fechas pasadas → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test(\"code = VALIDATION_ERROR\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"equipmentId\": {{equipmentId}},\n  \"renterCompanyId\": {{companyBId}},\n  \"startDate\": \"2020-01-01\",\n  \"endDate\": \"2020-01-03\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reservations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations"
+							]
+						},
+						"description": "Caso de error: `@FutureOrPresent` en el DTO rechaza las fechas antes de llegar al servicio → `400 VALIDATION_ERROR` con `details`. (Si `endDate < startDate`, el campo reportado es `dateRangeValid`.)"
+					},
+					"response": [
+						{
+							"name": "400 Bad Request",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"equipmentId\": {{equipmentId}},\n  \"renterCompanyId\": {{companyBId}},\n  \"startDate\": \"2020-01-01\",\n  \"endDate\": \"2020-01-03\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reservations",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations"
+									]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.6350344\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"VALIDATION_ERROR\",\n  \"message\": \"One or more fields are invalid\",\n  \"path\": \"/api/v1/reservations\",\n  \"details\": [\n    {\n      \"field\": \"endDate\",\n      \"rejectedValue\": \"2020-01-03\",\n      \"message\": \"debe ser una fecha en el presente o en el futuro\"\n    },\n    {\n      \"field\": \"startDate\",\n      \"rejectedValue\": \"2020-01-01\",\n      \"message\": \"debe ser una fecha en el presente o en el futuro\"\n    }\n  ]\n}"
+						}
+					]
+				},
+				{
+					"name": "Obtener reserva por id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/reservations/{{reservationId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations",
+								"{{reservationId}}"
+							]
+						},
+						"description": "Detalle de una reserva. Requiere `X-Company-Id` del arrendatario o del dueño del equipo; cualquier otra empresa → `403 FORBIDDEN_OPERATION`."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/reservations/{{reservationId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations",
+										"{{reservationId}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"equipmentId\": 1,\n  \"equipmentName\": \"Excavadora CAT 320\",\n  \"renterCompanyId\": 2,\n  \"renterCompanyName\": \"Constructora Pacifico SAC\",\n  \"startDate\": \"2026-09-29\",\n  \"endDate\": \"2026-10-02\",\n  \"totalDays\": 4,\n  \"dailyRate\": 800.00,\n  \"rentalAmount\": 3200.00,\n  \"securityDeposit\": 3000.00,\n  \"totalAmount\": 6200.00,\n  \"currency\": \"PEN\",\n  \"status\": \"PENDING\",\n  \"notes\": \"Obra en San Isidro, entrega a las 8am\",\n  \"createdAt\": \"2026-09-22T12:21:13.568856\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Listar mis reservas como arrendatario",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/reservations?role=RENTER&page=0&size=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations"
+							],
+							"query": [
+								{
+									"key": "role",
+									"value": "RENTER",
+									"description": "RENTER (default): reservas que hizo la empresa. OWNER: reservas sobre sus equipos."
+								},
+								{
+									"key": "page",
+									"value": "0",
+									"description": "Página (desde 0)."
+								},
+								{
+									"key": "size",
+									"value": "20",
+									"description": "Tamaño de página, 1–100."
+								}
+							]
+						},
+						"description": "Reservas de la empresa indicada en `X-Company-Id`, más recientes primero. También acepta `status` (opcional) para filtrar por estado."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/reservations?role=RENTER&page=0&size=20",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations"
+									],
+									"query": [
+										{
+											"key": "role",
+											"value": "RENTER",
+											"description": "RENTER (default): reservas que hizo la empresa. OWNER: reservas sobre sus equipos."
+										},
+										{
+											"key": "page",
+											"value": "0",
+											"description": "Página (desde 0)."
+										},
+										{
+											"key": "size",
+											"value": "20",
+											"description": "Tamaño de página, 1–100."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"content\": [\n    {\n      \"id\": 1,\n      \"equipmentId\": 1,\n      \"equipmentName\": \"Excavadora CAT 320\",\n      \"renterCompanyId\": 2,\n      \"renterCompanyName\": \"Constructora Pacifico SAC\",\n      \"startDate\": \"2026-09-29\",\n      \"endDate\": \"2026-10-02\",\n      \"totalDays\": 4,\n      \"dailyRate\": 800.00,\n      \"rentalAmount\": 3200.00,\n      \"securityDeposit\": 3000.00,\n      \"totalAmount\": 6200.00,\n      \"currency\": \"PEN\",\n      \"status\": \"PENDING\",\n      \"notes\": \"Obra en San Isidro, entrega a las 8am\",\n      \"createdAt\": \"2026-09-22T12:21:13.568856\"\n    }\n  ],\n  \"page\": 0,\n  \"size\": 20,\n  \"totalElements\": 1,\n  \"totalPages\": 1,\n  \"last\": true\n}"
+						}
+					]
+				},
+				{
+					"name": "Listar reservas de mis equipos (dueño)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/reservations?role=OWNER&status=PENDING&page=0&size=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations"
+							],
+							"query": [
+								{
+									"key": "role",
+									"value": "OWNER",
+									"description": "Reservas sobre los equipos de la empresa del X-Company-Id."
+								},
+								{
+									"key": "status",
+									"value": "PENDING",
+									"description": "Opcional. PENDING | CONFIRMED | IN_PROGRESS | COMPLETED | CANCELLED | REJECTED."
+								},
+								{
+									"key": "page",
+									"value": "0",
+									"description": "Página (desde 0)."
+								},
+								{
+									"key": "size",
+									"value": "20",
+									"description": "Tamaño de página, 1–100."
+								}
+							]
+						},
+						"description": "Bandeja del dueño: reservas pendientes de confirmar sobre sus equipos."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/reservations?role=OWNER&status=PENDING&page=0&size=20",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations"
+									],
+									"query": [
+										{
+											"key": "role",
+											"value": "OWNER",
+											"description": "Reservas sobre los equipos de la empresa del X-Company-Id."
+										},
+										{
+											"key": "status",
+											"value": "PENDING",
+											"description": "Opcional. PENDING | CONFIRMED | IN_PROGRESS | COMPLETED | CANCELLED | REJECTED."
+										},
+										{
+											"key": "page",
+											"value": "0",
+											"description": "Página (desde 0)."
+										},
+										{
+											"key": "size",
+											"value": "20",
+											"description": "Tamaño de página, 1–100."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"content\": [\n    {\n      \"id\": 1,\n      \"equipmentId\": 1,\n      \"equipmentName\": \"Excavadora CAT 320\",\n      \"renterCompanyId\": 2,\n      \"renterCompanyName\": \"Constructora Pacifico SAC\",\n      \"startDate\": \"2026-09-29\",\n      \"endDate\": \"2026-10-02\",\n      \"totalDays\": 4,\n      \"dailyRate\": 800.00,\n      \"rentalAmount\": 3200.00,\n      \"securityDeposit\": 3000.00,\n      \"totalAmount\": 6200.00,\n      \"currency\": \"PEN\",\n      \"status\": \"PENDING\",\n      \"notes\": \"Obra en San Isidro, entrega a las 8am\",\n      \"createdAt\": \"2026-09-22T12:21:13.568856\"\n    }\n  ],\n  \"page\": 0,\n  \"size\": 20,\n  \"totalElements\": 1,\n  \"totalPages\": 1,\n  \"last\": true\n}"
+						}
+					]
+				},
+				{
+					"name": "Cambiar estado con X-Company-Id ajeno → 403",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 403\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});",
+									"pm.test(\"code = FORBIDDEN_OPERATION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"FORBIDDEN_OPERATION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"CONFIRMED\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reservations/{{reservationId}}/status",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations",
+								"{{reservationId}}",
+								"status"
+							]
+						},
+						"description": "Caso de error: el arrendatario (B) intenta confirmar su propia reserva; solo el dueño del equipo puede hacerlo → `403 FORBIDDEN_OPERATION`.\n\nOjo: la transición se valida **antes** que el actor, así que una transición imposible devuelve `409 INVALID_STATUS_TRANSITION` aunque la empresa sea ajena."
+					},
+					"response": [
+						{
+							"name": "403 Forbidden",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"status\": \"CONFIRMED\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reservations/{{reservationId}}/status",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations",
+										"{{reservationId}}",
+										"status"
+									]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.7044297\",\n  \"status\": 403,\n  \"error\": \"Forbidden\",\n  \"code\": \"FORBIDDEN_OPERATION\",\n  \"message\": \"Only the equipment owner can move the reservation to CONFIRMED\",\n  \"path\": \"/api/v1/reservations/1/status\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Confirmar reserva (dueño)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Incluye \\\"status\\\":\\\"CONFIRMED\\\"\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"status\\\":\\\"CONFIRMED\\\"\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/reservations/{{reservationId}}/confirmation",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations",
+								"{{reservationId}}",
+								"confirmation"
+							]
+						},
+						"description": "Atajo para `PATCH /status` con `CONFIRMED`. Sin body. Solo el dueño del equipo. Antes de confirmar se re-verifica el solapamiento bajo lock (`409 EQUIPMENT_NOT_AVAILABLE` si hay conflicto)."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/reservations/{{reservationId}}/confirmation",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations",
+										"{{reservationId}}",
+										"confirmation"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"equipmentId\": 1,\n  \"equipmentName\": \"Excavadora CAT 320\",\n  \"renterCompanyId\": 2,\n  \"renterCompanyName\": \"Constructora Pacifico SAC\",\n  \"startDate\": \"2026-09-29\",\n  \"endDate\": \"2026-10-02\",\n  \"totalDays\": 4,\n  \"dailyRate\": 800.00,\n  \"rentalAmount\": 3200.00,\n  \"securityDeposit\": 3000.00,\n  \"totalAmount\": 6200.00,\n  \"currency\": \"PEN\",\n  \"status\": \"CONFIRMED\",\n  \"notes\": \"Obra en San Isidro, entrega a las 8am\",\n  \"createdAt\": \"2026-09-22T12:21:13.568856\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Pasar reserva a IN_PROGRESS",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Incluye \\\"status\\\":\\\"IN_PROGRESS\\\"\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"status\\\":\\\"IN_PROGRESS\\\"\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"IN_PROGRESS\",\n  \"reason\": \"Equipo entregado en obra\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reservations/{{reservationId}}/status",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations",
+								"{{reservationId}}",
+								"status"
+							]
+						},
+						"description": "Cambio de estado genérico (`ReservationStatusUpdateRequest`: `status` obligatorio, `reason` opcional ≤500, que se agrega a `notes`). Al pasar a `IN_PROGRESS` el equipo queda `RENTED`."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"status\": \"IN_PROGRESS\",\n  \"reason\": \"Equipo entregado en obra\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reservations/{{reservationId}}/status",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations",
+										"{{reservationId}}",
+										"status"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"equipmentId\": 1,\n  \"equipmentName\": \"Excavadora CAT 320\",\n  \"renterCompanyId\": 2,\n  \"renterCompanyName\": \"Constructora Pacifico SAC\",\n  \"startDate\": \"2026-09-29\",\n  \"endDate\": \"2026-10-02\",\n  \"totalDays\": 4,\n  \"dailyRate\": 800.00,\n  \"rentalAmount\": 3200.00,\n  \"securityDeposit\": 3000.00,\n  \"totalAmount\": 6200.00,\n  \"currency\": \"PEN\",\n  \"status\": \"IN_PROGRESS\",\n  \"notes\": \"Obra en San Isidro, entrega a las 8am | Equipo entregado en obra\",\n  \"createdAt\": \"2026-09-22T12:21:13.568856\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Completar reserva",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Incluye \\\"status\\\":\\\"COMPLETED\\\"\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"status\\\":\\\"COMPLETED\\\"\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"COMPLETED\",\n  \"reason\": \"Equipo devuelto sin danos\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reservations/{{reservationId}}/status",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations",
+								"{{reservationId}}",
+								"status"
+							]
+						},
+						"description": "Cierra el alquiler: el equipo vuelve a `AVAILABLE` y la reserva ya puede reseñarse."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"status\": \"COMPLETED\",\n  \"reason\": \"Equipo devuelto sin danos\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reservations/{{reservationId}}/status",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations",
+										"{{reservationId}}",
+										"status"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"equipmentId\": 1,\n  \"equipmentName\": \"Excavadora CAT 320\",\n  \"renterCompanyId\": 2,\n  \"renterCompanyName\": \"Constructora Pacifico SAC\",\n  \"startDate\": \"2026-09-29\",\n  \"endDate\": \"2026-10-02\",\n  \"totalDays\": 4,\n  \"dailyRate\": 800.00,\n  \"rentalAmount\": 3200.00,\n  \"securityDeposit\": 3000.00,\n  \"totalAmount\": 6200.00,\n  \"currency\": \"PEN\",\n  \"status\": \"COMPLETED\",\n  \"notes\": \"Obra en San Isidro, entrega a las 8am | Equipo entregado en obra | Equipo devuelto sin danos\",\n  \"createdAt\": \"2026-09-22T12:21:13.568856\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Transición de estado inválida → 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 409\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"pm.test(\"code = INVALID_STATUS_TRANSITION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"INVALID_STATUS_TRANSITION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"IN_PROGRESS\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reservations/{{reservationId}}/status",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations",
+								"{{reservationId}}",
+								"status"
+							]
+						},
+						"description": "Caso de error: una reserva `COMPLETED` es terminal. `InvalidStatusTransitionException` → `409`, `code: INVALID_STATUS_TRANSITION`."
+					},
+					"response": [
+						{
+							"name": "409 Conflict",
+							"originalRequest": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"status\": \"IN_PROGRESS\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reservations/{{reservationId}}/status",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations",
+										"{{reservationId}}",
+										"status"
+									]
+								}
+							},
+							"status": "Conflict",
+							"code": 409,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.7510999\",\n  \"status\": 409,\n  \"error\": \"Conflict\",\n  \"code\": \"INVALID_STATUS_TRANSITION\",\n  \"message\": \"A reservation cannot move from COMPLETED to IN_PROGRESS\",\n  \"path\": \"/api/v1/reservations/1/status\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Listar reservas de un equipo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/equipment/{{equipmentId}}/reservations?page=0&size=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment",
+								"{{equipmentId}}",
+								"reservations"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "0",
+									"description": "Página (desde 0)."
+								},
+								{
+									"key": "size",
+									"value": "20",
+									"description": "Tamaño de página, 1–100."
+								}
+							]
+						},
+						"description": "Endpoint de `EquipmentController`: calendario de reservas del equipo ordenado por `startDate`. Hoy es público (no pide `X-Company-Id`)."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/equipment/{{equipmentId}}/reservations?page=0&size=20",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment",
+										"{{equipmentId}}",
+										"reservations"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "0",
+											"description": "Página (desde 0)."
+										},
+										{
+											"key": "size",
+											"value": "20",
+											"description": "Tamaño de página, 1–100."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"content\": [\n    {\n      \"id\": 1,\n      \"equipmentId\": 1,\n      \"equipmentName\": \"Excavadora CAT 320\",\n      \"renterCompanyId\": 2,\n      \"renterCompanyName\": \"Constructora Pacifico SAC\",\n      \"startDate\": \"2026-09-29\",\n      \"endDate\": \"2026-10-02\",\n      \"totalDays\": 4,\n      \"dailyRate\": 800.00,\n      \"rentalAmount\": 3200.00,\n      \"securityDeposit\": 3000.00,\n      \"totalAmount\": 6200.00,\n      \"currency\": \"PEN\",\n      \"status\": \"COMPLETED\",\n      \"notes\": \"Obra en San Isidro, entrega a las 8am | Equipo entregado en obra | Equipo devuelto sin danos\",\n      \"createdAt\": \"2026-09-22T12:21:13.568856\"\n    }\n  ],\n  \"page\": 0,\n  \"size\": 20,\n  \"totalElements\": 1,\n  \"totalPages\": 1,\n  \"last\": true\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear segunda reserva (fechas posteriores)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"secondReservationId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"equipmentId\": {{equipmentId}},\n  \"renterCompanyId\": {{companyBId}},\n  \"startDate\": \"{{laterStartDate}}\",\n  \"endDate\": \"{{laterEndDate}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reservations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations"
+							]
+						},
+						"description": "Reserva auxiliar para demostrar la regla de borrado de equipos y la cancelación. Guarda `secondReservationId`."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"equipmentId\": {{equipmentId}},\n  \"renterCompanyId\": {{companyBId}},\n  \"startDate\": \"{{laterStartDate}}\",\n  \"endDate\": \"{{laterEndDate}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reservations",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/reservations/2"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 2,\n  \"equipmentId\": 1,\n  \"equipmentName\": \"Excavadora CAT 320\",\n  \"renterCompanyId\": 2,\n  \"renterCompanyName\": \"Constructora Pacifico SAC\",\n  \"startDate\": \"2026-10-22\",\n  \"endDate\": \"2026-10-24\",\n  \"totalDays\": 3,\n  \"dailyRate\": 800.00,\n  \"rentalAmount\": 2400.00,\n  \"securityDeposit\": 3000.00,\n  \"totalAmount\": 5400.00,\n  \"currency\": \"PEN\",\n  \"status\": \"PENDING\",\n  \"notes\": null,\n  \"createdAt\": \"2026-09-22T12:21:13.773623\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Eliminar equipo con reservas activas → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test(\"code = INVALID_OPERATION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"INVALID_OPERATION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/equipment/{{equipmentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment",
+								"{{equipmentId}}"
+							]
+						},
+						"description": "Caso de error de negocio: el equipo tiene una reserva `PENDING` futura → `400 INVALID_OPERATION` (\"deactivate it instead\")."
+					},
+					"response": [
+						{
+							"name": "400 Bad Request",
+							"originalRequest": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/equipment/{{equipmentId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment",
+										"{{equipmentId}}"
+									]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.7836331\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_OPERATION\",\n  \"message\": \"Equipment with active or pending reservations cannot be deleted; deactivate it instead\",\n  \"path\": \"/api/v1/equipment/1\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Cancelar reserva",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Incluye \\\"status\\\":\\\"CANCELLED\\\"\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"status\\\":\\\"CANCELLED\\\"\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/reservations/{{secondReservationId}}/cancellation?reason=Cambio de cronograma de obra",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reservations",
+								"{{secondReservationId}}",
+								"cancellation"
+							],
+							"query": [
+								{
+									"key": "reason",
+									"value": "Cambio de cronograma de obra",
+									"description": "Opcional. Se agrega a notes."
+								}
+							]
+						},
+						"description": "Atajo para `PATCH /status` con `CANCELLED`. Sin body; el motivo va como query param `reason`. Lo puede hacer el arrendatario o el dueño, desde `PENDING` o `CONFIRMED`."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/reservations/{{secondReservationId}}/cancellation?reason=Cambio de cronograma de obra",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reservations",
+										"{{secondReservationId}}",
+										"cancellation"
+									],
+									"query": [
+										{
+											"key": "reason",
+											"value": "Cambio de cronograma de obra",
+											"description": "Opcional. Se agrega a notes."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 2,\n  \"equipmentId\": 1,\n  \"equipmentName\": \"Excavadora CAT 320\",\n  \"renterCompanyId\": 2,\n  \"renterCompanyName\": \"Constructora Pacifico SAC\",\n  \"startDate\": \"2026-10-22\",\n  \"endDate\": \"2026-10-24\",\n  \"totalDays\": 3,\n  \"dailyRate\": 800.00,\n  \"rentalAmount\": 2400.00,\n  \"securityDeposit\": 3000.00,\n  \"totalAmount\": 5400.00,\n  \"currency\": \"PEN\",\n  \"status\": \"CANCELLED\",\n  \"notes\": \"Cambio de cronograma de obra\",\n  \"createdAt\": \"2026-09-22T12:21:13.773623\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Reviews",
+			"description": "`ReviewController` — `/api/v1/reviews`, más `GET /api/v1/equipment/{id}/reviews` (en `EquipmentController`). Solo el arrendatario puede reseñar, solo reservas `COMPLETED` y una vez por reserva.",
+			"item": [
+				{
+					"name": "Reseñar reserva no completada → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test(\"code = INVALID_OPERATION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"INVALID_OPERATION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reservationId\": {{secondReservationId}},\n  \"rating\": 4\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reviews",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reviews"
+							]
+						},
+						"description": "Caso de error: la reserva está `CANCELLED`, no `COMPLETED` → `400 INVALID_OPERATION`."
+					},
+					"response": [
+						{
+							"name": "400 Bad Request",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"reservationId\": {{secondReservationId}},\n  \"rating\": 4\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reviews",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reviews"
+									]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.8108103\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_OPERATION\",\n  \"message\": \"Only completed reservations can be reviewed\",\n  \"path\": \"/api/v1/reviews\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Reseñar como dueño → 403",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 403\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});",
+									"pm.test(\"code = FORBIDDEN_OPERATION\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"FORBIDDEN_OPERATION\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyAId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reservationId\": {{reservationId}},\n  \"rating\": 5\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reviews",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reviews"
+							]
+						},
+						"description": "Caso de error: solo la empresa arrendataria puede reseñar → `403 FORBIDDEN_OPERATION`."
+					},
+					"response": [
+						{
+							"name": "403 Forbidden",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyAId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"reservationId\": {{reservationId}},\n  \"rating\": 5\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reviews",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reviews"
+									]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.819773\",\n  \"status\": 403,\n  \"error\": \"Forbidden\",\n  \"code\": \"FORBIDDEN_OPERATION\",\n  \"message\": \"Only the renting company can review this reservation\",\n  \"path\": \"/api/v1/reviews\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Crear reseña (arrendatario)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    pm.collectionVariables.set(\"reviewId\", pm.response.json().id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reservationId\": {{reservationId}},\n  \"rating\": 5,\n  \"conditionRating\": 4,\n  \"comment\": \"Equipo en excelente estado y entrega puntual\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reviews",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reviews"
+							]
+						},
+						"description": "Crea la reseña (`ReviewCreateRequest`: `reservationId`, `rating` 1–5 obligatorio, `conditionRating` 1–5 opcional, `comment` ≤1000). Requiere `X-Company-Id` del arrendatario. Guarda el `id` en `reviewId`."
+					},
+					"response": [
+						{
+							"name": "201 Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"reservationId\": {{reservationId}},\n  \"rating\": 5,\n  \"conditionRating\": 4,\n  \"comment\": \"Equipo en excelente estado y entrega puntual\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reviews",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reviews"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Location",
+									"value": "http://localhost:8080/api/v1/reviews/1"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"reservationId\": 1,\n  \"equipmentId\": 1,\n  \"reviewerCompanyId\": 2,\n  \"rating\": 5,\n  \"conditionRating\": 4,\n  \"comment\": \"Equipo en excelente estado y entrega puntual\",\n  \"createdAt\": \"2026-09-22T12:21:13.832361\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Reseña duplicada → 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 409\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"pm.test(\"code = DUPLICATE_RESOURCE\", function () {",
+									"    pm.expect(pm.response.json().code).to.eql(\"DUPLICATE_RESOURCE\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reservationId\": {{reservationId}},\n  \"rating\": 4\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/reviews",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reviews"
+							]
+						},
+						"description": "Caso de error: la reserva ya tiene reseña → `409 DUPLICATE_RESOURCE`."
+					},
+					"response": [
+						{
+							"name": "409 Conflict",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"reservationId\": {{reservationId}},\n  \"rating\": 4\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/reviews",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reviews"
+									]
+								}
+							},
+							"status": "Conflict",
+							"code": 409,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"timestamp\": \"2026-09-22T12:21:13.8459218\",\n  \"status\": 409,\n  \"error\": \"Conflict\",\n  \"code\": \"DUPLICATE_RESOURCE\",\n  \"message\": \"Review already exists with reservation '1'\",\n  \"path\": \"/api/v1/reviews\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Obtener reseña por id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/reviews/{{reviewId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reviews",
+								"{{reviewId}}"
+							]
+						},
+						"description": "Devuelve una reseña. Público."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/reviews/{{reviewId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reviews",
+										"{{reviewId}}"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"reservationId\": 1,\n  \"equipmentId\": 1,\n  \"reviewerCompanyId\": 2,\n  \"rating\": 5,\n  \"conditionRating\": 4,\n  \"comment\": \"Equipo en excelente estado y entrega puntual\",\n  \"createdAt\": \"2026-09-22T12:21:13.832361\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Obtener reseña de una reserva",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/reviews?reservationId={{reservationId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reviews"
+							],
+							"query": [
+								{
+									"key": "reservationId",
+									"value": "{{reservationId}}",
+									"description": "Obligatorio para este endpoint."
+								}
+							]
+						},
+						"description": "Devuelve la reseña de una reserva (`GET /reviews?reservationId=`). `404` si la reserva aún no tiene reseña. Sin `reservationId` no hay endpoint que atienda `GET /reviews`."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/reviews?reservationId={{reservationId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reviews"
+									],
+									"query": [
+										{
+											"key": "reservationId",
+											"value": "{{reservationId}}",
+											"description": "Obligatorio para este endpoint."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"id\": 1,\n  \"reservationId\": 1,\n  \"equipmentId\": 1,\n  \"reviewerCompanyId\": 2,\n  \"rating\": 5,\n  \"conditionRating\": 4,\n  \"comment\": \"Equipo en excelente estado y entrega puntual\",\n  \"createdAt\": \"2026-09-22T12:21:13.832361\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Promedio de rating de un equipo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Incluye \\\"averageRating\\\":5.0\", function () {",
+									"    pm.expect(pm.response.text()).to.include(\"\\\"averageRating\\\":5.0\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/reviews/ratings?equipmentId={{equipmentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reviews",
+								"ratings"
+							],
+							"query": [
+								{
+									"key": "equipmentId",
+									"value": "{{equipmentId}}",
+									"description": "Obligatorio."
+								}
+							]
+						},
+						"description": "Devuelve `{ \"equipmentId\", \"averageRating\" }`. Si el equipo no tiene reseñas, `averageRating` es `0.0`. `404` si el equipo no existe."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/reviews/ratings?equipmentId={{equipmentId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reviews",
+										"ratings"
+									],
+									"query": [
+										{
+											"key": "equipmentId",
+											"value": "{{equipmentId}}",
+											"description": "Obligatorio."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"averageRating\": 5.0,\n  \"equipmentId\": 1\n}"
+						}
+					]
+				},
+				{
+					"name": "Listar reseñas de un equipo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/equipment/{{equipmentId}}/reviews?page=0&size=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"equipment",
+								"{{equipmentId}}",
+								"reviews"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "0",
+									"description": "Página (desde 0)."
+								},
+								{
+									"key": "size",
+									"value": "20",
+									"description": "Tamaño de página, 1–100."
+								}
+							]
+						},
+						"description": "Endpoint de `EquipmentController`: reseñas del equipo, más recientes primero."
+					},
+					"response": [
+						{
+							"name": "200 OK",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/equipment/{{equipmentId}}/reviews?page=0&size=20",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"equipment",
+										"{{equipmentId}}",
+										"reviews"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "0",
+											"description": "Página (desde 0)."
+										},
+										{
+											"key": "size",
+											"value": "20",
+											"description": "Tamaño de página, 1–100."
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n  \"content\": [\n    {\n      \"id\": 1,\n      \"reservationId\": 1,\n      \"equipmentId\": 1,\n      \"reviewerCompanyId\": 2,\n      \"rating\": 5,\n      \"conditionRating\": 4,\n      \"comment\": \"Equipo en excelente estado y entrega puntual\",\n      \"createdAt\": \"2026-09-22T12:21:13.832361\"\n    }\n  ],\n  \"page\": 0,\n  \"size\": 20,\n  \"totalElements\": 1,\n  \"totalPages\": 1,\n  \"last\": true\n}"
+						}
+					]
+				},
+				{
+					"name": "Eliminar reseña",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status 204\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "X-Company-Id",
+								"value": "{{companyBId}}",
+								"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/reviews/{{reviewId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"reviews",
+								"{{reviewId}}"
+							]
+						},
+						"description": "Borra la reseña. Solo la empresa arrendataria que la escribió (si no, `403`). `204 No Content`."
+					},
+					"response": [
+						{
+							"name": "204 No Content",
+							"originalRequest": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Company-Id",
+										"value": "{{companyBId}}",
+										"description": "Empresa que actúa (hoy sin autenticación). Pendiente brief 05: reemplazar por Bearer {{token}}."
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/reviews/{{reviewId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"reviews",
+										"{{reviewId}}"
+									]
+								}
+							},
+							"status": "No Content",
+							"code": 204,
+							"_postman_previewlanguage": "text",
+							"header": [],
+							"cookie": [],
+							"body": ""
+						}
+					]
+				}
+			]
+		}
+	],
+	"auth": {
+		"type": "noauth"
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// La API rechaza fechas pasadas: se calculan fechas relativas a hoy antes de cada request.",
+					"function plusDays(n) {",
+					"    const d = new Date();",
+					"    d.setDate(d.getDate() + n);",
+					"    const pad = v => String(v).padStart(2, '0');",
+					"    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());",
+					"}",
+					"pm.collectionVariables.set('startDate', plusDays(7));",
+					"pm.collectionVariables.set('endDate', plusDays(10));",
+					"pm.collectionVariables.set('overlapStartDate', plusDays(9));",
+					"pm.collectionVariables.set('overlapEndDate', plusDays(12));",
+					"pm.collectionVariables.set('laterStartDate', plusDays(30));",
+					"pm.collectionVariables.set('laterEndDate', plusDays(32));"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080/api/v1",
+			"type": "string",
+			"description": "Raíz de la API. Cambiar al desplegar."
+		},
+		{
+			"key": "companyAId",
+			"value": "",
+			"type": "string",
+			"description": "Empresa A (dueña del equipo). Se llena al crearla."
+		},
+		{
+			"key": "companyBId",
+			"value": "",
+			"type": "string",
+			"description": "Empresa B (arrendataria). Se llena al crearla."
+		},
+		{
+			"key": "tempCompanyId",
+			"value": "",
+			"type": "string",
+			"description": "Empresa auxiliar para demostrar la desactivación."
+		},
+		{
+			"key": "userId",
+			"value": "",
+			"type": "string",
+			"description": "Usuario ADMIN de A."
+		},
+		{
+			"key": "operatorUserId",
+			"value": "",
+			"type": "string",
+			"description": "Usuario OPERATOR de A."
+		},
+		{
+			"key": "categoryId",
+			"value": "",
+			"type": "string",
+			"description": "Categoría principal."
+		},
+		{
+			"key": "tempCategoryId",
+			"value": "",
+			"type": "string",
+			"description": "Categoría auxiliar para demostrar el borrado."
+		},
+		{
+			"key": "equipmentId",
+			"value": "",
+			"type": "string",
+			"description": "Equipo de A que alquila B."
+		},
+		{
+			"key": "tempEquipmentId",
+			"value": "",
+			"type": "string",
+			"description": "Equipo auxiliar para demostrar el borrado."
+		},
+		{
+			"key": "reservationId",
+			"value": "",
+			"type": "string",
+			"description": "Reserva principal del flujo."
+		},
+		{
+			"key": "secondReservationId",
+			"value": "",
+			"type": "string",
+			"description": "Reserva auxiliar (se cancela)."
+		},
+		{
+			"key": "reviewId",
+			"value": "",
+			"type": "string",
+			"description": "Reseña creada por B."
+		},
+		{
+			"key": "missingId",
+			"value": "999999",
+			"type": "string",
+			"description": "Id que no existe, para los casos 404."
+		},
+		{
+			"key": "startDate",
+			"value": "",
+			"type": "string",
+			"description": "Calculada por el pre-request script (hoy + 7)."
+		},
+		{
+			"key": "endDate",
+			"value": "",
+			"type": "string",
+			"description": "Calculada por el pre-request script (hoy + 10)."
+		},
+		{
+			"key": "overlapStartDate",
+			"value": "",
+			"type": "string",
+			"description": "Calculada (hoy + 9): se cruza con startDate..endDate."
+		},
+		{
+			"key": "overlapEndDate",
+			"value": "",
+			"type": "string",
+			"description": "Calculada (hoy + 12)."
+		},
+		{
+			"key": "laterStartDate",
+			"value": "",
+			"type": "string",
+			"description": "Calculada (hoy + 30): rango libre."
+		},
+		{
+			"key": "laterEndDate",
+			"value": "",
+			"type": "string",
+			"description": "Calculada (hoy + 32)."
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string",
+			"description": "Pendiente brief 05 (JWT, no mergeado): todavía no existe endpoint de login ni se usa."
+		}
+	]
+}
