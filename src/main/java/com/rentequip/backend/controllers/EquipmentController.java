@@ -7,6 +7,7 @@ import com.rentequip.backend.dtos.response.EquipmentSummaryResponse;
 import com.rentequip.backend.dtos.response.PageResponse;
 import com.rentequip.backend.dtos.response.ReservationResponse;
 import com.rentequip.backend.dtos.response.ReviewResponse;
+import com.rentequip.backend.hateoas.EquipmentModelAssembler;
 import com.rentequip.backend.services.EquipmentService;
 import com.rentequip.backend.services.ReservationService;
 import com.rentequip.backend.services.ReviewService;
@@ -20,7 +21,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.hateoas.EntityModel;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,7 +31,6 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -44,37 +46,39 @@ import java.time.LocalDate;
 @Validated
 public class EquipmentController {
 
-    private static final String ACTING_COMPANY_HEADER = "X-Company-Id";
-
+    private final EquipmentModelAssembler equipmentAssembler;
     private final EquipmentService equipmentService;
     private final ReservationService reservationService;
     private final ReviewService reviewService;
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @PostMapping
-    public ResponseEntity<EquipmentResponse> create(@Valid @RequestBody EquipmentCreateRequest request,
-                                                     UriComponentsBuilder uriBuilder) {
+    public ResponseEntity<EntityModel<EquipmentResponse>> create(
+            @Valid @RequestBody EquipmentCreateRequest request,
+            UriComponentsBuilder uriBuilder) {
         EquipmentResponse created = equipmentService.create(request);
         URI location = uriBuilder.path("/api/v1/equipment/{id}").buildAndExpand(created.id()).toUri();
-        return ResponseEntity.created(location).body(created);
+        return ResponseEntity.created(location).body(equipmentAssembler.toModel(created));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<EquipmentResponse> findById(@PathVariable Long id) {
-        return ResponseEntity.ok(equipmentService.findById(id));
+    public ResponseEntity<EntityModel<EquipmentResponse>> findById(@PathVariable Long id) {
+        return ResponseEntity.ok(equipmentAssembler.toModel(equipmentService.findById(id)));
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @PatchMapping("/{id}")
-    public ResponseEntity<EquipmentResponse> update(
+    public ResponseEntity<EntityModel<EquipmentResponse>> update(
             @PathVariable Long id,
-            @Valid @RequestBody EquipmentUpdateRequest request,
-            @RequestHeader(ACTING_COMPANY_HEADER) @NotNull Long actingCompanyId) {
-        return ResponseEntity.ok(equipmentService.update(id, request, actingCompanyId));
+            @Valid @RequestBody EquipmentUpdateRequest request) {
+        return ResponseEntity.ok(equipmentAssembler.toModel(
+                equipmentService.update(id, request)));
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id,
-                                       @RequestHeader(ACTING_COMPANY_HEADER) @NotNull Long actingCompanyId) {
-        equipmentService.delete(id, actingCompanyId);
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        equipmentService.delete(id);
         return ResponseEntity.noContent().build();
     }
 

@@ -14,6 +14,7 @@ import com.rentequip.backend.exceptions.ResourceNotFoundException;
 import com.rentequip.backend.mappers.UserMapper;
 import com.rentequip.backend.repositories.CompanyRepository;
 import com.rentequip.backend.repositories.UserRepository;
+import com.rentequip.backend.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final CurrentUser currentUser;
     private final CompanyRepository companyRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
@@ -33,15 +35,16 @@ public class UserService {
     @Transactional
     public UserResponse create(UserCreateRequest request) {
         validateEmailIsFree(request.email(), null);
+        validateBelongsToCallerCompany(request.companyId());
         Company company = findCompanyOrThrow(request.companyId());
         User user = userMapper.toEntity(request, company, passwordEncoder.encode(request.password()));
         return userMapper.toResponse(userRepository.save(user));
     }
 
     @Transactional
-    public UserResponse update(Long userId, UserUpdateRequest request, Long actingCompanyId) {
+    public UserResponse update(Long userId, UserUpdateRequest request) {
         User user = findOrThrow(userId);
-        validateSameCompany(user, actingCompanyId);
+        validateSameCompany(user, currentUser.requireCompanyId());
         if (request.role() != null) {
             validateCompanyKeepsAnAdmin(user, request.role());
         }
@@ -50,9 +53,9 @@ public class UserService {
     }
 
     @Transactional
-    public void disable(Long userId, Long actingCompanyId) {
+    public void disable(Long userId) {
         User user = findOrThrow(userId);
-        validateSameCompany(user, actingCompanyId);
+        validateSameCompany(user, currentUser.requireCompanyId());
         validateCompanyKeepsAnAdmin(user, UserRole.OPERATOR);
         user.setEnabled(false);
     }
@@ -93,6 +96,15 @@ public class UserService {
                 : userRepository.existsByEmailIgnoreCaseAndIdNot(email, currentId);
         if (taken) {
             throw DuplicateResourceException.of("User", "email", email);
+        }
+    }
+
+    /**
+     * A company can only create users inside itself, whatever company id the payload carries.
+     */
+    private void validateBelongsToCallerCompany(Long companyId) {
+        if (!companyId.equals(currentUser.requireCompanyId())) {
+            throw new ForbiddenOperationException("You can only create users inside your own company");
         }
     }
 

@@ -44,6 +44,14 @@ public class ReservationStatusPolicy {
     }
 
     /**
+     * Whether the transition exists at all, ignoring who is asking. Callers that only need to know if an
+     * action is offered (hypermedia links, UI affordances) use this instead of catching the exception.
+     */
+    public boolean canTransitionTo(ReservationStatus current, ReservationStatus target) {
+        return current != target && ALLOWED_TRANSITIONS.getOrDefault(current, Set.of()).contains(target);
+    }
+
+    /**
      * True when the new status releases the calendar, which is what lets the equipment go back to
      * AVAILABLE and lets other companies book the same window.
      */
@@ -57,7 +65,7 @@ public class ReservationStatusPolicy {
         if (current == target) {
             throw new InvalidStatusTransitionException("The reservation is already " + target);
         }
-        if (!ALLOWED_TRANSITIONS.getOrDefault(current, Set.of()).contains(target)) {
+        if (!canTransitionTo(current, target)) {
             throw InvalidStatusTransitionException.of(current, target);
         }
     }

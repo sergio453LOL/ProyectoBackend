@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,7 +16,6 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -28,10 +28,9 @@ import java.net.URI;
 @Validated
 public class UserController {
 
-    private static final String ACTING_COMPANY_HEADER = "X-Company-Id";
-
     private final UserService userService;
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     public ResponseEntity<UserResponse> create(@Valid @RequestBody UserCreateRequest request,
                                                 UriComponentsBuilder uriBuilder) {
@@ -45,18 +44,18 @@ public class UserController {
         return ResponseEntity.ok(userService.findById(id));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{id}")
     public ResponseEntity<UserResponse> update(
             @PathVariable Long id,
-            @Valid @RequestBody UserUpdateRequest request,
-            @RequestHeader(ACTING_COMPANY_HEADER) @NotNull Long actingCompanyId) {
-        return ResponseEntity.ok(userService.update(id, request, actingCompanyId));
+            @Valid @RequestBody UserUpdateRequest request) {
+        return ResponseEntity.ok(userService.update(id, request));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> disable(@PathVariable Long id,
-                                         @RequestHeader(ACTING_COMPANY_HEADER) @NotNull Long actingCompanyId) {
-        userService.disable(id, actingCompanyId);
+    public ResponseEntity<Void> disable(@PathVariable Long id) {
+        userService.disable(id);
         return ResponseEntity.noContent().build();
     }
 }

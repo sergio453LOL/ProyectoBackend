@@ -17,6 +17,7 @@ import com.rentequip.backend.mappers.EquipmentMapper;
 import com.rentequip.backend.repositories.CompanyRepository;
 import com.rentequip.backend.repositories.EquipmentCategoryRepository;
 import com.rentequip.backend.repositories.EquipmentRepository;
+import com.rentequip.backend.security.CurrentUser;
 import com.rentequip.backend.repositories.ReservationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -39,6 +40,7 @@ public class EquipmentService {
     private static final double MAX_SEARCH_RADIUS_KM = 1000.0;
 
     private final EquipmentRepository equipmentRepository;
+    private final CurrentUser currentUser;
     private final EquipmentCategoryRepository categoryRepository;
     private final CompanyRepository companyRepository;
     private final ReservationRepository reservationRepository;
@@ -55,7 +57,8 @@ public class EquipmentService {
     }
 
     @Transactional
-    public EquipmentResponse update(Long equipmentId, EquipmentUpdateRequest request, Long actingCompanyId) {
+    public EquipmentResponse update(Long equipmentId, EquipmentUpdateRequest request) {
+        Long actingCompanyId = currentUser.requireCompanyId();
         Equipment equipment = findOrThrow(equipmentId);
         validateOwnership(equipment, actingCompanyId);
 
@@ -67,7 +70,8 @@ public class EquipmentService {
     }
 
     @Transactional
-    public void delete(Long equipmentId, Long actingCompanyId) {
+    public void delete(Long equipmentId) {
+        Long actingCompanyId = currentUser.requireCompanyId();
         Equipment equipment = findOrThrow(equipmentId);
         validateOwnership(equipment, actingCompanyId);
         validateNoActiveReservations(equipmentId);

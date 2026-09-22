@@ -4,16 +4,21 @@ import com.rentequip.backend.dtos.request.ReservationCreateRequest;
 import com.rentequip.backend.entities.Company;
 import com.rentequip.backend.entities.Equipment;
 import com.rentequip.backend.entities.EquipmentCategory;
+import com.rentequip.backend.enums.UserRole;
 import com.rentequip.backend.exceptions.InvalidOperationException;
 import com.rentequip.backend.exceptions.OverbookingException;
 import com.rentequip.backend.repositories.CompanyRepository;
 import com.rentequip.backend.repositories.EquipmentCategoryRepository;
 import com.rentequip.backend.repositories.EquipmentRepository;
 import com.rentequip.backend.repositories.ReservationRepository;
+import com.rentequip.backend.security.CompanyUserDetails;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -71,14 +76,21 @@ class ReservationConcurrencyTest {
         equipmentId = equipment.getId();
     }
 
+    @AfterEach
+    void clearAuthentication() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     void rejectsTheSecondReservationWhenDatesOverlap() {
         LocalDate start = LocalDate.now().plusDays(3);
         LocalDate end = start.plusDays(4);
 
-        reservationService.create(request(firstRenterId, start, end));
+        authenticateAs(firstRenterId);
+        reservationService.create(request(start, end));
 
-        assertThatThrownBy(() -> reservationService.create(request(secondRenterId, start.plusDays(2), end.plusDays(2))))
+        authenticateAs(secondRenterId);
+        assertThatThrownBy(() -> reservationService.create(request(start.plusDays(2), end.plusDays(2))))
                 .isInstanceOf(OverbookingException.class);
         assertThat(reservationRepository.count()).isEqualTo(1);
     }
@@ -87,8 +99,11 @@ class ReservationConcurrencyTest {
     void acceptsBackToBackReservationsThatDoNotOverlap() {
         LocalDate start = LocalDate.now().plusDays(3);
 
-        reservationService.create(request(firstRenterId, start, start.plusDays(2)));
-        reservationService.create(request(secondRenterId, start.plusDays(3), start.plusDays(5)));
+        authenticateAs(firstRenterId);
+        reservationService.create(request(start, start.plusDays(2)));
+
+        authenticateAs(secondRenterId);
+        reservationService.create(request(start.plusDays(3), start.plusDays(5)));
 
         assertThat(reservationRepository.count()).isEqualTo(2);
     }
@@ -97,13 +112,15 @@ class ReservationConcurrencyTest {
     void rejectsAReservationOnTheCompanyOwnEquipment() {
         LocalDate start = LocalDate.now().plusDays(3);
 
-        assertThatThrownBy(() -> reservationService.create(request(ownerId, start, start.plusDays(1))))
+        authenticateAs(ownerId);
+        assertThatThrownBy(() -> reservationService.create(request(start, start.plusDays(1))))
                 .isInstanceOf(InvalidOperationException.class);
     }
 
     /**
-     * Ten companies race for the same window. The PESSIMISTIC_WRITE lock on the equipment row must let
-     * exactly one through and turn the other nine into 409 responses.
+     * Ten companies race for the same window, each on its own authenticated thread. The
+     * PESSIMISTIC_WRITE lock on the equipment row must let exactly one through and turn the other nine
+     * into 409 responses.
      */
     @Test
     void onlyOneOfTenSimultaneousRequestsWins() throws Exception {
@@ -137,13 +154,28 @@ class ReservationConcurrencyTest {
         return () -> {
             startGate.await();
             try {
-                reservationService.create(request(renterId, start, end));
+                // The SecurityContext is thread local, so every racing thread authenticates on its own.
+                authenticateAs(renterId);
+                reservationService.create(request(start, end));
                 succeeded.incrementAndGet();
             } catch (RuntimeException expected) {
                 rejected.incrementAndGet();
+            } finally {
+                SecurityContextHolder.clearContext();
             }
             return null;
         };
+    }
+
+    /**
+     * Puts a principal for the given company in the SecurityContext, which is where the service now
+     * reads the renting company from.
+     */
+    private void authenticateAs(Long companyId) {
+        CompanyUserDetails principal = new CompanyUserDetails(
+                companyId, "company%d@test.pe".formatted(companyId), null, companyId, UserRole.ADMIN, true);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
     }
 
     private List<Company> seedRenters(int amount) {
@@ -155,8 +187,8 @@ class ReservationConcurrencyTest {
                 .toList();
     }
 
-    private ReservationCreateRequest request(Long renterId, LocalDate start, LocalDate end) {
-        return new ReservationCreateRequest(equipmentId, renterId, start, end, null);
+    private ReservationCreateRequest request(LocalDate start, LocalDate end) {
+        return new ReservationCreateRequest(equipmentId, start, end, null);
     }
 
     private Company newCompany(String name, String taxId, String email) {

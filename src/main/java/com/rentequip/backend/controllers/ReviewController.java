@@ -1,6 +1,7 @@
 package com.rentequip.backend.controllers;
 
 import com.rentequip.backend.dtos.request.ReviewCreateRequest;
+import com.rentequip.backend.dtos.response.EquipmentRatingResponse;
 import com.rentequip.backend.dtos.response.ReviewResponse;
 import com.rentequip.backend.services.ReviewService;
 import jakarta.validation.Valid;
@@ -13,14 +14,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/reviews")
@@ -28,16 +27,13 @@ import java.util.Map;
 @Validated
 public class ReviewController {
 
-    private static final String ACTING_COMPANY_HEADER = "X-Company-Id";
-
     private final ReviewService reviewService;
 
     @PostMapping
     public ResponseEntity<ReviewResponse> create(
             @Valid @RequestBody ReviewCreateRequest request,
-            @RequestHeader(ACTING_COMPANY_HEADER) @NotNull Long actingCompanyId,
             UriComponentsBuilder uriBuilder) {
-        ReviewResponse created = reviewService.create(request, actingCompanyId);
+        ReviewResponse created = reviewService.create(request);
         URI location = uriBuilder.path("/api/v1/reviews/{id}").buildAndExpand(created.id()).toUri();
         return ResponseEntity.created(location).body(created);
     }
@@ -53,16 +49,13 @@ public class ReviewController {
     }
 
     @GetMapping("/ratings")
-    public ResponseEntity<Map<String, Object>> findAverageRating(@RequestParam Long equipmentId) {
-        return ResponseEntity.ok(Map.of(
-                "equipmentId", equipmentId,
-                "averageRating", reviewService.findAverageRating(equipmentId)));
+    public ResponseEntity<EquipmentRatingResponse> findAverageRating(@RequestParam Long equipmentId) {
+        return ResponseEntity.ok(reviewService.findAverageRating(equipmentId));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id,
-                                        @RequestHeader(ACTING_COMPANY_HEADER) @NotNull Long actingCompanyId) {
-        reviewService.delete(id, actingCompanyId);
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        reviewService.delete(id);
         return ResponseEntity.noContent().build();
     }
 }
