@@ -1,6 +1,7 @@
 package com.rentequip.backend.services;
 
 import com.rentequip.backend.dtos.request.ReviewCreateRequest;
+import com.rentequip.backend.dtos.response.EquipmentRatingResponse;
 import com.rentequip.backend.dtos.response.PageResponse;
 import com.rentequip.backend.dtos.response.ReviewResponse;
 import com.rentequip.backend.entities.Reservation;
@@ -14,6 +15,7 @@ import com.rentequip.backend.mappers.ReviewMapper;
 import com.rentequip.backend.repositories.EquipmentRepository;
 import com.rentequip.backend.repositories.ReservationRepository;
 import com.rentequip.backend.repositories.ReviewRepository;
+import com.rentequip.backend.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -24,12 +26,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class ReviewService {
 
     private final ReviewRepository reviewRepository;
+    private final CurrentUser currentUser;
     private final ReservationRepository reservationRepository;
     private final EquipmentRepository equipmentRepository;
     private final ReviewMapper reviewMapper;
 
     @Transactional
-    public ReviewResponse create(ReviewCreateRequest request, Long actingCompanyId) {
+    public ReviewResponse create(ReviewCreateRequest request) {
+        Long actingCompanyId = currentUser.requireCompanyId();
         Reservation reservation = reservationRepository.findDetailedById(request.reservationId())
                 .orElseThrow(() -> ResourceNotFoundException.of("Reservation", request.reservationId()));
 
@@ -42,7 +46,8 @@ public class ReviewService {
     }
 
     @Transactional
-    public void delete(Long reviewId, Long actingCompanyId) {
+    public void delete(Long reviewId) {
+        Long actingCompanyId = currentUser.requireCompanyId();
         Review review = findOrThrow(reviewId);
         validateReviewerIsRenter(review.getReservation(), actingCompanyId);
         reviewRepository.delete(review);
@@ -68,9 +73,10 @@ public class ReviewService {
     }
 
     @Transactional(readOnly = true)
-    public double findAverageRating(Long equipmentId) {
+    public EquipmentRatingResponse findAverageRating(Long equipmentId) {
         assertEquipmentExists(equipmentId);
-        return reviewRepository.findAverageRatingByEquipmentId(equipmentId).orElse(0.0);
+        double average = reviewRepository.findAverageRatingByEquipmentId(equipmentId).orElse(0.0);
+        return new EquipmentRatingResponse(equipmentId, average);
     }
 
     private Review findOrThrow(Long reviewId) {

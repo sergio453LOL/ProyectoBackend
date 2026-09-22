@@ -7,6 +7,7 @@ import com.rentequip.backend.dtos.response.EquipmentSummaryResponse;
 import com.rentequip.backend.dtos.response.PageResponse;
 import com.rentequip.backend.dtos.response.UserResponse;
 import com.rentequip.backend.enums.UserRole;
+import com.rentequip.backend.hateoas.CompanyModelAssembler;
 import com.rentequip.backend.services.CompanyService;
 import com.rentequip.backend.services.EquipmentService;
 import com.rentequip.backend.services.UserService;
@@ -17,7 +18,9 @@ import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.hateoas.EntityModel;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,7 +28,6 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,23 +41,24 @@ import java.net.URI;
 @Validated
 public class CompanyController {
 
-    private static final String ACTING_COMPANY_HEADER = "X-Company-Id";
-
+    private final CompanyModelAssembler companyAssembler;
     private final CompanyService companyService;
     private final UserService userService;
     private final EquipmentService equipmentService;
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
-    public ResponseEntity<CompanyResponse> create(@Valid @RequestBody CompanyCreateRequest request,
-                                                   UriComponentsBuilder uriBuilder) {
+    public ResponseEntity<EntityModel<CompanyResponse>> create(
+            @Valid @RequestBody CompanyCreateRequest request,
+            UriComponentsBuilder uriBuilder) {
         CompanyResponse created = companyService.create(request);
         URI location = uriBuilder.path("/api/v1/companies/{id}").buildAndExpand(created.id()).toUri();
-        return ResponseEntity.created(location).body(created);
+        return ResponseEntity.created(location).body(companyAssembler.toModel(created));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<CompanyResponse> findById(@PathVariable Long id) {
-        return ResponseEntity.ok(companyService.findById(id));
+    public ResponseEntity<EntityModel<CompanyResponse>> findById(@PathVariable Long id) {
+        return ResponseEntity.ok(companyAssembler.toModel(companyService.findById(id)));
     }
 
     @GetMapping
@@ -67,18 +70,19 @@ public class CompanyController {
         return ResponseEntity.ok(companyService.findAll(city, pageable));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{id}")
-    public ResponseEntity<CompanyResponse> update(
+    public ResponseEntity<EntityModel<CompanyResponse>> update(
             @PathVariable Long id,
-            @Valid @RequestBody CompanyUpdateRequest request,
-            @RequestHeader(ACTING_COMPANY_HEADER) @NotNull Long actingCompanyId) {
-        return ResponseEntity.ok(companyService.update(id, request, actingCompanyId));
+            @Valid @RequestBody CompanyUpdateRequest request) {
+        return ResponseEntity.ok(companyAssembler.toModel(
+                companyService.update(id, request)));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deactivate(@PathVariable Long id,
-                                            @RequestHeader(ACTING_COMPANY_HEADER) @NotNull Long actingCompanyId) {
-        companyService.deactivate(id, actingCompanyId);
+    public ResponseEntity<Void> deactivate(@PathVariable Long id) {
+        companyService.deactivate(id);
         return ResponseEntity.noContent().build();
     }
 

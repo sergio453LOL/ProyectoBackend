@@ -9,6 +9,7 @@ import com.rentequip.backend.entities.Company;
 import com.rentequip.backend.entities.Equipment;
 import com.rentequip.backend.entities.Reservation;
 import com.rentequip.backend.enums.EquipmentStatus;
+import com.rentequip.backend.enums.ReservationRole;
 import com.rentequip.backend.enums.ReservationStatus;
 import com.rentequip.backend.exceptions.EquipmentUnavailableException;
 import com.rentequip.backend.exceptions.ForbiddenOperationException;
@@ -20,6 +21,7 @@ import com.rentequip.backend.mappers.ReservationMapper;
 import com.rentequip.backend.repositories.CompanyRepository;
 import com.rentequip.backend.repositories.EquipmentRepository;
 import com.rentequip.backend.repositories.ReservationRepository;
+import com.rentequip.backend.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +47,7 @@ public class ReservationService {
 
     private static final Logger log = LoggerFactory.getLogger(ReservationService.class);
 
+    private final CurrentUser currentUser;
     private final ReservationRepository reservationRepository;
     private final EquipmentRepository equipmentRepository;
     private final CompanyRepository companyRepository;
@@ -55,7 +58,7 @@ public class ReservationService {
     public ReservationResponse create(ReservationCreateRequest request) {
         validateDateRange(request.startDate(), request.endDate());
 
-        Company renter = findCompanyOrThrow(request.renterCompanyId());
+        Company renter = findCompanyOrThrow(currentUser.requireCompanyId());
         Equipment equipment = lockEquipment(request.equipmentId());
 
         validateEquipmentIsRentable(equipment);
@@ -71,8 +74,8 @@ public class ReservationService {
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    public ReservationResponse updateStatus(Long reservationId, ReservationStatusUpdateRequest request,
-                                            Long actingCompanyId) {
+    public ReservationResponse updateStatus(Long reservationId, ReservationStatusUpdateRequest request) {
+        Long actingCompanyId = currentUser.requireCompanyId();
         Reservation reservation = reservationRepository.findByIdForUpdate(reservationId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Reservation", reservationId));
 
@@ -83,23 +86,36 @@ public class ReservationService {
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    public ReservationResponse confirm(Long reservationId, Long actingCompanyId) {
+    public ReservationResponse confirm(Long reservationId) {
         return updateStatus(reservationId,
-                new ReservationStatusUpdateRequest(ReservationStatus.CONFIRMED, null), actingCompanyId);
+                new ReservationStatusUpdateRequest(ReservationStatus.CONFIRMED, null));
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    public ReservationResponse cancel(Long reservationId, String reason, Long actingCompanyId) {
+    public ReservationResponse cancel(Long reservationId, String reason) {
         return updateStatus(reservationId,
-                new ReservationStatusUpdateRequest(ReservationStatus.CANCELLED, reason), actingCompanyId);
+                new ReservationStatusUpdateRequest(ReservationStatus.CANCELLED, reason));
     }
 
     @Transactional(readOnly = true)
-    public ReservationResponse findById(Long reservationId, Long actingCompanyId) {
+    public ReservationResponse findById(Long reservationId) {
         Reservation reservation = reservationRepository.findDetailedById(reservationId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Reservation", reservationId));
-        validateVisibility(reservation, actingCompanyId);
+        validateVisibility(reservation, currentUser.requireCompanyId());
         return reservationMapper.toResponse(reservation);
+    }
+
+    /**
+     * Single entry point for a company listing its own reservations. Which side of the marketplace it is
+     * asking about is a domain decision, so the branch lives here and not in the controller.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ReservationResponse> findForCompany(ReservationRole role,
+                                                             ReservationStatus status, Pageable pageable) {
+        Long companyId = currentUser.requireCompanyId();
+        return role == ReservationRole.OWNER
+                ? findByOwner(companyId, status, pageable)
+                : findByRenter(companyId, status, pageable);
     }
 
     @Transactional(readOnly = true)

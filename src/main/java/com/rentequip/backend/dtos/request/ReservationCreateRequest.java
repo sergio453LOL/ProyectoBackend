@@ -7,13 +7,14 @@ import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
 
+/**
+ * The renting company is never part of the payload: it is taken from the authenticated token, so a
+ * caller cannot book equipment in someone else's name.
+ */
 public record ReservationCreateRequest(
 
         @NotNull
         Long equipmentId,
-
-        @NotNull
-        Long renterCompanyId,
 
         @NotNull @FutureOrPresent
         LocalDate startDate,
